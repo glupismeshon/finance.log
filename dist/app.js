@@ -292,7 +292,7 @@
       const empty = node("div","empty-state");
       const filtered = query || filter !== "all" || catFilter !== "all" || dayFilter;
       const line = (tag, cls, text) => { const p = node("div"); p.append(node("span",`tag ${cls}`,tag),document.createTextNode(text)); return p; };
-      empty.append(node("div","prompt","money.log"));
+      empty.append(node("div","prompt","finance.log"));
       if (filtered) {
         empty.append(line("[--]","warn",t("empty.notFound")),node("div","muted",t("empty.notFoundHint")));
       } else if (trash) {
@@ -986,7 +986,7 @@
     try {
       const raw = locked ? (localStorage.getItem(KEY) ?? localStorage.getItem(KEY_V1)) : JSON.stringify({...state,exportedAt:new Date().toISOString()},null,2);
       if(raw===null) throw new Error(t("err.noData"));
-      download(raw,`money-log-${today()}${locked ? "-recovery" : ""}.json`);
+      download(raw,`finance-log-${today()}${locked ? "-recovery" : ""}.json`);
       toast(t("msg.exported"));
     } catch(e){toast(I.err(e));}
   }

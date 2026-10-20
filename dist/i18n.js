@@ -2,7 +2,7 @@
   "use strict";
   // Словари интерфейса (ru / en), t(), plural(), форматирование денег и дат.
   const ru = {
-    "app.title": "money.log — журнал денег",
+    "app.title": "finance.log — журнал денег",
     "app.desc": "Личный журнал денег. Записывайте доходы и расходы без лишнего.",
     "common.back": "[← назад]",
     "common.edit": "[изменить]",
@@ -344,7 +344,7 @@
     "err.read": "Не удалось прочитать сохранённый журнал. Исходные данные не изменены. Запись отключена; кнопка «Скачать копию» сохранит исходные данные для восстановления.",
     "err.noData": "Нет доступных данных для копии.",
     "err.tooBig": "Копия слишком большая. Максимум — 25 МБ.",
-    "err.notJson": "Это не JSON-копия money.log.",
+    "err.notJson": "Это не JSON-копия finance.log.",
     "err.otherTab": "В другой вкладке появились некорректные данные. Запись временно отключена, исходный журнал сохранён.",
 
     "settings.lang": "язык",
@@ -365,7 +365,7 @@
   };
 
   const en = {
-    "app.title": "money.log — money journal",
+    "app.title": "finance.log — money journal",
     "app.desc": "a personal money journal. log income and expenses, nothing extra.",
     "common.back": "[← back]",
     "common.edit": "[edit]",
@@ -707,7 +707,7 @@
     "err.read": "could not read the saved journal. the original data is unchanged. writing is disabled; \"download backup\" will save the original data for recovery.",
     "err.noData": "no data available for a backup.",
     "err.tooBig": "the backup is too large. maximum is 25 MB.",
-    "err.notJson": "this is not a money.log JSON backup.",
+    "err.notJson": "this is not a finance.log JSON backup.",
     "err.otherTab": "another tab has invalid data. writing is disabled for now, the original journal is kept.",
 
     "settings.lang": "language",
@@ -736,7 +736,7 @@
       "Счёт с таким названием уже есть.": "an account with this name already exists.",
       "Название счёта — от 1 до 100 символов.": "account name must be 1 to 100 characters.",
       "Нужен хотя бы один счёт.": "at least one account is required.",
-      "Не удалось прочитать копию money.log. Проверьте формат файла.": "could not read the money.log backup. check the file format.",
+      "Не удалось прочитать копию finance.log. Проверьте формат файла.": "could not read the finance.log backup. check the file format.",
       "В копии есть некорректные или повторяющиеся записи.": "the backup contains invalid or duplicate entries.",
       "В копии есть некорректные или повторяющиеся счета.": "the backup contains invalid or duplicate accounts.",
       "В копии есть некорректные или повторяющиеся категории.": "the backup contains invalid or duplicate categories.",

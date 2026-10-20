@@ -1,6 +1,6 @@
 {
-  "name": "money.log",
-  "short_name": "money.log",
+  "name": "finance.log",
+  "short_name": "finance.log",
   "lang": "ru",
   "start_url": "./",
   "scope": "./",

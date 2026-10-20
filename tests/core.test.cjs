@@ -121,8 +121,8 @@ test("Валидация отвергает невозможные операц�
   bad(op("a","transfer",10));
   assert.doesNotThrow(()=>S.validate({...base(),operations:[op("a","expense",10,{allocations:[]})]}));
   assert.doesNotThrow(()=>S.validate({...base(),operations:[op("a","expense",10,{allocations:[{categoryId:"c-transport",amountCents:4},{categoryId:null,amountCents:6}]})]}));
-  assert.throws(()=>S.validate({...base(),version:3}),/Не удалось прочитать копию money\.log/);
-  assert.throws(()=>S.migrate({version:3},TODAY),/Не удалось прочитать копию money\.log/);
+  assert.throws(()=>S.validate({...base(),version:3}),/Не удалось прочитать копию finance\.log/);
+  assert.throws(()=>S.migrate({version:3},TODAY),/Не удалось прочитать копию finance\.log/);
 });
 test("Слияние v1-копии в пустой журнал даёт тот же результат, что миграция",()=>{
   const v1={version:1,openingCents:-12345,entries:[v1entry("a","income",10,{date:"2026-09-01"}),v1entry("b","expense",20,{deleted:true})]};

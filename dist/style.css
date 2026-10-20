@@ -1,4 +1,4 @@
-/* money.log — стиль в духе init.Tasks: тёмная GitHub-подобная палитра, моноширинный шрифт, box с подписью «$ …» */
+/* finance.log — стиль в духе init.Tasks: тёмная GitHub-подобная палитра, моноширинный шрифт, box с подписью «$ …» */
 
 /* ---------- Токены ---------- */
 :root {
@@ -42,8 +42,8 @@ svg.ico { flex: none; color: var(--muted); }
 }
 .brand { display: flex; align-items: center; gap: 8px; color: var(--headers); font-size: 14px; font-weight: 700; text-decoration: none; }
 .brand-icon {
-  display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 20px; flex: 0 0 auto; white-space: nowrap;
-  border: 1px solid var(--border); border-radius: 22.5%;
+  display: inline-flex; align-items: center; justify-content: center; width: auto; padding: 0 4px; height: 20px; flex: 0 0 auto; white-space: nowrap;
+  border: 1px solid var(--border); border-radius: 5px;
   font-size: 9.5px; font-weight: 700; letter-spacing: -0.5px; color: var(--accent);
 }
 .brand-icon .bi-br { color: var(--muted); }

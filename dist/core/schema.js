@@ -4,7 +4,7 @@
   const {validDate, MAX_AMOUNT} = node ? require("./money.js") : root.MoneyCore.money;
   const OP_TYPES = ["income", "expense", "transfer", "adjustment"];
   const KINDS = ["debit", "cash", "savings", "credit_card", "loan", "person"];
-  const FORMAT = "Не удалось прочитать копию money.log. Проверьте формат файла.";
+  const FORMAT = "Не удалось прочитать копию finance.log. Проверьте формат файла.";
   const BAD_OPS = "В копии есть некорректные или повторяющиеся записи.";
   const BAD_ACCOUNTS = "В копии есть некорректные или повторяющиеся счета.";
   const LIMIT = "Общая сумма превышает поддерживаемый предел.";
