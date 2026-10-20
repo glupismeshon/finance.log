@@ -157,7 +157,7 @@ input[type="search"]::-webkit-search-cancel-button { filter: grayscale(1); }
 .account-filter[hidden] { display: none; }
 
 .shead { margin: 14px 0 3px; color: var(--muted); font-size: 12.5px; }
-.shead::before { content: "// "; }
+.shead::before { content: "-- "; }
 .shead:first-child { margin-top: 8px; }
 
 .todo {
@@ -175,7 +175,7 @@ input[type="search"]::-webkit-search-cancel-button { filter: grayscale(1); }
 .tamount.transfer { color: var(--cyan); }
 .tamount.adjustment { color: var(--warn); }
 .tmeta { grid-column: 2 / -1; margin-left: 4px; color: var(--muted); font-size: 12.5px; display: flex; flex-wrap: wrap; gap: 0 12px; }
-.tmeta-text::before { content: "// "; }
+.tmeta-text::before { content: "-- "; }
 .row-actions { display: flex; gap: 10px; }
 .row-actions .bracket { padding: 2px 0; }
 
@@ -304,7 +304,7 @@ button.dp-title:hover, button.dp-title:focus-visible { color: var(--accent); out
 .tree-item:hover { background: var(--panel); }
 .tree-item.selected { color: var(--accent); }
 .tnote { grid-column: 2 / -1; margin-left: 4px; color: var(--muted); font-size: 12.5px; }
-.tnote::before { content: "// "; }
+.tnote::before { content: "-- "; }
 .cat-link { text-decoration: underline dotted; text-underline-offset: 3px; }
 .cat-bar { margin: 4px 0 6px; }
 .cat-row.child { padding-left: 14px; }

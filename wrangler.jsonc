@@ -1,11 +1,18 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "finance-log",
-  "compatibility_date": "2026-10-19",
-  "observability": {
-    "enabled": true
-  },
-  "assets": {
-    "directory": "dist"
-  }
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "finance-log",
+	"compatibility_date": "2026-10-19",
+	"observability": {
+		"enabled": true
+	},
+	"assets": {
+		"directory": "dist"
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "finance-log",
+			"database_id": "0b4f8980-94db-4d9c-a1eb-5b2b2153afaa"
+		}
+	]
 }
