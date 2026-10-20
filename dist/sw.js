@@ -1,5 +1,5 @@
 "use strict";
-const CACHE = "finance-log-v27";
+const CACHE = "finance-log-v28";
 const ASSETS = [
   "./",
   "index.html",
@@ -18,6 +18,8 @@ const ASSETS = [
   "core/views.js",
   "core/analytics.js",
   "core/sync.js",
+  "core/schedules.js",
+  "core/forecast.js",
   "icon.svg",
   "manifest.webmanifest",
   "apple-touch-icon.png",

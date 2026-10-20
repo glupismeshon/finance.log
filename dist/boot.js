@@ -2,7 +2,7 @@
   "use strict";
   // Читает настройки и применяет тему до отрисовки (подключается синхронно в <head> после themes.js).
   const KEY = "money.log.settings", OLD_THEME_KEY = "money.log.theme";
-  const DEFAULTS = {lang: "auto", themeMode: "auto", darkTheme: "githubDark", lightTheme: "ayuLight", privacy: false, privacyOnStart: false, hints: true, titleAnim: true, onboardingDismissed: false, balanceView: "noLoans", warnHiddenUntil: 0};
+  const DEFAULTS = {lang: "auto", themeMode: "auto", darkTheme: "githubDark", lightTheme: "ayuLight", privacy: false, privacyOnStart: false, hints: true, titleAnim: true, onboardingDismissed: false, balanceView: "noLoans", warnHiddenUntil: 0, hiddenRecurring: []};
   const themes = (root.MoneyCore && root.MoneyCore.themes) || {THEMES: [], DEFAULT_DARK: "githubDark", DEFAULT_LIGHT: "ayuLight"};
   const find = id => themes.THEMES.find(t => t.id === id);
   const listeners = [];
@@ -22,6 +22,7 @@
     if (typeof raw.onboardingDismissed === "boolean") s.onboardingDismissed = raw.onboardingDismissed;
     if (["all", "noLoans", "noCards", "ownOnly"].includes(raw.balanceView)) s.balanceView = raw.balanceView;
     if (typeof raw.warnHiddenUntil === "number" && isFinite(raw.warnHiddenUntil)) s.warnHiddenUntil = raw.warnHiddenUntil;
+    if (Array.isArray(raw.hiddenRecurring)) s.hiddenRecurring = [...new Set(raw.hiddenRecurring.filter(x => typeof x === "string" && x.length > 0 && x.length <= 80))].slice(-200);
     const d = find(raw.darkTheme), l = find(raw.lightTheme);
     if (d && d.dark) s.darkTheme = d.id;
     if (l && !l.dark) s.lightTheme = l.id;

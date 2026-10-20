@@ -14,7 +14,7 @@
   let undoId = null, tab = "journal", currentAccount = null, showArchived = false, accountEditing = null, reconAccount = null, activeSheet = null;
   let selCat = null, catTouched = false, accTouched = false, catFilter = "all", catKind = "expense", showCatArchived = false, categoryEditing = null;
   let receipt = {open: false, manual: false, rows: []};
-  let dayFilter = null, anFresh = true;
+  let dayFilter = null, anFresh = true, planLink = null;
   let settings = boot.get();
   let authReady = false;
   I.setLang(I.resolve(settings.lang));
@@ -145,6 +145,7 @@
     if (!plain || (sc && sc.kind !== type)) selCat = null;
     syncReceipt();
     renderFormSuggest();
+    syncPlanNote();
   }
   // ---------- подсказки в форме: где / категория ----------
   function renderFormSuggest() {
@@ -208,14 +209,14 @@
   const dps = {};
   document.querySelectorAll(".dp").forEach(host => {
     const id = host.querySelector("input").id;
-    dps[id === "account-date" ? "account" : id === "recon-date" ? "recon" : "date"] = DP.create(host, {
-      heat: heatForCalendar,
+    dps[{"account-date": "account", "recon-date": "recon", "plan-start": "planStart", "plan-end": "planEnd"}[id] || "date"] = DP.create(host, {
+      heat: id === "date" ? heatForCalendar : undefined,
       // на телефоне после выбора возвращаем строку «// дата: …» вместо открытого поля
       onClose: () => { if (id === "date" && isMobile()) $("entry-form").classList.remove("date-open"); }
     });
   });
   function resetForm(focus = false) {
-    editing = null;
+    editing = null; planLink = null;
     $("entry-form").reset();
     resetReceipt();
     selCat = null; catTouched = false; accTouched = false;
@@ -232,7 +233,7 @@
     if (focus) $("amount").focus();
   }
   function edit(entry) {
-    editing = entry.id;
+    editing = entry.id; planLink = null;
     $("amount").value = amountInput(amountOf(entry));
     $("date").value = entry.date;
     $("note").value = entry.note;
@@ -339,6 +340,7 @@
       const label = t(`type.${entry.type}`), noteText = I.stored(entry.note);
       const accText = entry.type === "transfer" ? (noteText ? route : "") : accName(entry.legs[0].accountId);
       const cat = opCat(entry), merchantText = entry.merchant || "";
+      const planParts = entry.links && entry.links.scheduleId ? [t("row.plan"), (state.schedules.find(x => x.id === entry.links.scheduleId) || {}).name].filter(Boolean) : [];
       const title = entry.type === "transfer" ? noteText || route : merchantText || noteText || (cat ? catPath(cat) : label);
       const sign = entry.legs[0].amountCents > 0 ? "+" : "−";
       row.append(node("span",`mark ${entry.type}`,{income: "[+]", expense: "[-]", transfer: "[⇄]", adjustment: "[~]"}[entry.type]));
@@ -356,8 +358,8 @@
         const link = node("button","bracket cat-link",catPath(cat)); link.type = "button";
         link.setAttribute("aria-label",t("filter.catTap",{name: catPath(cat)}));
         link.addEventListener("click",ev=>{ ev.stopPropagation(); setCatFilter(cat.id); });
-        metaText.append(link,document.createTextNode([accText,trash ? t("row.deleted") : ""].filter(Boolean).map(x=>" · "+x).join("")));
-      } else metaText.textContent = [posText,label,accText,trash ? t("row.deleted") : ""].filter(Boolean).join(" · ");
+        metaText.append(link,document.createTextNode([accText,...planParts,trash ? t("row.deleted") : ""].filter(Boolean).map(x=>" · "+x).join("")));
+      } else metaText.textContent = [posText,label,accText,...planParts,trash ? t("row.deleted") : ""].filter(Boolean).join(" · ");
       meta.append(metaText);
       const actions = node("span","row-actions");
       if (trash) {
@@ -473,6 +475,7 @@
     setNav($("settings-nav"), tab === "settings");
     setNav($("categories-nav"), tab === "categories");
     setNav($("analytics-nav"), tab === "analytics");
+    setNav($("plans-nav"), tab === "plans");
     setNav($("accounts-nav"), tab === "accounts" && !currentAccount);
     document.querySelectorAll("#nav-accounts .qv").forEach(el => setNav(el, tab === "accounts" && el.dataset.id === currentAccount));
     $("journal-title").textContent = t(trash ? "nav.trash" : "nav.journal");
@@ -526,6 +529,8 @@
     renderDayBar();
     renderEntries();
     if (tab === "analytics") renderAnalytics();
+    renderPlanBanner();
+    if (tab === "plans") renderPlans();
   }
   function showScreen(name, accountId = null, isTrash = false) {
     if (activeSheet) dismissAny();
@@ -981,6 +986,7 @@
         if (previous) next = journal.upsertOperation(state,{...withoutItems(previous),type:"transfer",date,note,deleted:false,legs,allocations:[]},now);
         else {
           const transfer = journal.makeTransfer({id:newId(),fromId:accountId,toId,amountCents,date,note,now});
+          if (planLink) transfer.links = {...planLink};
           next = journal.upsertOperation(state,transfer,now);
           const feeRaw = $("fee").value.trim();
           if (feeRaw) next = journal.upsertOperation(next,journal.makeFee({id:newId(),transferId:transfer.id,accountId,amountCents:M.parseAmount(feeRaw),date,now}),now);
@@ -994,6 +1000,7 @@
           entry.items = receiptItems;
           entry.allocations = journal.allocationsFromItems(receiptItems, selCat);
         }
+        if (!previous && planLink) entry.links = {...planLink};
         const merchant = $("merchant").value.trim();
         if (merchant) entry.merchant = merchant; else delete entry.merchant;
         next = journal.upsertOperation(state,entry,now);
@@ -1946,6 +1953,439 @@
   $("analytics-nav").addEventListener("click", () => setTab("analytics"));
   let anResize = null;
   window.addEventListener("resize", () => { if (tab !== "analytics") return; clearTimeout(anResize); anResize = setTimeout(() => renderAnMonths(anRange()), 120); });
+
+  // ---------- вкладка «планы» ----------
+  const SCH = globalThis.MoneyCore.schedules, FC = globalThis.MoneyCore.forecast;
+  const FC_DAYS = 60, SOON_DAYS = 14, DONE_DAYS = 14;
+  let planEditing = null, planType = "expense", planCat = null, planFreq = "monthly", planSub = false, planEnd = false, planPreset = null;
+  let showPlanArchived = false, plSel = null, plFc = null;
+  const daysBetween = (a, b) => Math.round((utcDate(a) - utcDate(b)) / 864e5);
+  const wdName = n => lowerEn(dtf({weekday: "short"}, addDays("2024-01-01", n - 1))).replace(/\./g, "");
+  const planMark = type => ({income: "[+]", expense: "[-]", transfer: "[⇄]"}[type]);
+  const planSign = type => type === "income" ? "+" : type === "expense" ? "−" : "";
+  function ruleText(sc) {
+    const r = sc.rule, n = r.interval;
+    if (r.freq === "monthly") {
+      const day = r.day === 31 ? t("plans.r.last") : t("plans.r.dayN", {day: r.day});
+      return n === 1 ? t("plans.r.monthly", {day}) : t("plans.r.monthlyN", {n, day});
+    }
+    if (r.freq === "weekly") return n === 1 ? t("plans.r.weekly", {wd: wdName(r.weekday)}) : t("plans.r.weeklyN", {n, wd: wdName(r.weekday)});
+    if (r.freq === "yearly") {
+      const date = `${r.day} ${monthShort(`2024-${String(r.month).padStart(2, "0")}-01`)}`;
+      return n === 1 ? t("plans.r.yearly", {date}) : t("plans.r.yearlyN", {n, date});
+    }
+    return n === 1 ? t("plans.r.day1") : t("plans.r.days", {n});
+  }
+  const schedById = id => state.schedules.find(s => s.id === id);
+
+  // ----- плашка на главном экране -----
+  function renderPlanBanner() {
+    const el = $("plan-banner"), td = today();
+    const due = SCH.occurrences(state, {from: addDays(td, -60), to: td, today: td}).filter(o => o.status === "due" || o.status === "overdue");
+    const todays = due.filter(o => o.status === "due"), late = due.filter(o => o.status === "overdue");
+    const first = todays[0] || late[0];
+    el.hidden = !first;
+    if (!first) return;
+    const sc = schedById(first.scheduleId), isToday = first.status === "due";
+    const moreToday = todays.length - (isToday ? 1 : 0), moreLate = late.length - (isToday ? 0 : 1);
+    const text = node("span", "pb-text");
+    text.append(node("span", "tag warn", "[!]"), document.createTextNode(` ${t(isToday ? "banner.today" : "banner.overdue")}: ${sc.name} ${planSign(sc.type)}${money(sc.amountCents)}`));
+    const ok = node("button", "bracket pb-btn", t("plans.confirm")); ok.type = "button";
+    ok.setAttribute("aria-label", t("plans.confirmAria", {name: sc.name}));
+    ok.addEventListener("click", () => openPlanConfirm(sc, first.dueDate));
+    text.append(document.createTextNode(" "), ok);
+    const more = [moreToday > 0 ? t("banner.moreToday", {n: moreToday}) : "", moreLate > 0 ? t("banner.moreOverdue", {n: moreLate}) : ""].filter(Boolean);
+    if (more.length) text.append(document.createTextNode(" · " + more.join(" · ")));
+    const go = node("button", "bracket pb-btn", t("banner.plans")); go.type = "button";
+    go.addEventListener("click", () => setTab("plans"));
+    el.replaceChildren(text, go);
+  }
+
+  // ----- подтверждение платежа через форму записи -----
+  function openPlanConfirm(sc, dueDate) {
+    resetForm();
+    planLink = {scheduleId: sc.id, dueDate};
+    $("amount").value = amountInput(sc.amountCents);
+    $("date").value = dueDate > today() ? today() : dueDate;
+    $("note").value = sc.name;
+    $("merchant").value = sc.merchant || "";
+    selCat = sc.categoryId || null; catTouched = true; accTouched = true;
+    updateDateSummary();
+    setMode(sc.type, sc.type === "transfer" ? {from: sc.accountId, to: sc.toAccountId} : {from: sc.accountId});
+    openSheet();
+    $("amount").focus();
+    if (!isMobile()) $("entry-form").scrollIntoView({block: "nearest", behavior: "smooth"});
+  }
+  function syncPlanNote() {
+    const sc = planLink && schedById(planLink.scheduleId);
+    $("plan-note").hidden = !planLink;
+    $("entry-form").classList.toggle("plan", !!planLink);
+    if (planLink) $("plan-note").textContent = t("plans.note", {name: sc ? sc.name : "—", day: anDay(planLink.dueDate)});
+  }
+
+  // ----- экран -----
+  function planRow(o, sc) {
+    const td = today(), done = o.status === "confirmed";
+    const op = done ? state.operations.find(x => x.id === o.opId) : null;
+    const row = node("div", `pl-row ${o.status}`);
+    row.append(node("span", "pl-mark", done ? "[✓]" : o.status === "overdue" ? "[!]" : planMark(sc.type)));
+    row.append(node("span", "pl-title", `${anDay(o.dueDate)} · ${sc.name}`));
+    const cents = op ? amountOf(op) : sc.amountCents;
+    row.append(node("span", `pl-amt ${sc.type}`, `${planSign(sc.type)}${money(cents)}`));
+    const meta = node("div", "pl-meta");
+    if (done) {
+      let text = t("plans.done." + sc.type);
+      const dev = SCH.deviation(state, o.opId);
+      if (dev) text += " " + t("plans.dev", {sum: signed(dev)});
+      meta.append(node("span", "pl-state", text));
+      if (op) {
+        const ed = node("button", "bracket", t("plans.edit")); ed.type = "button";
+        ed.setAttribute("aria-label", t("plans.editAria", {name: sc.name}));
+        ed.addEventListener("click", () => edit(op));
+        meta.append(ed);
+      }
+    } else {
+      const d = daysBetween(o.dueDate, td);
+      meta.append(node("span", "pl-state", o.status === "overdue" ? t("plans.overdueBy", {n: -d}) : d === 0 ? t("plans.today") : t("plans.inDays", {n: d})));
+      const ok = node("button", "bracket pl-ok", t("plans.confirm")); ok.type = "button";
+      ok.setAttribute("aria-label", t("plans.confirmAria", {name: sc.name}));
+      ok.addEventListener("click", () => openPlanConfirm(sc, o.dueDate));
+      const skip = node("button", "bracket", t("plans.skip")); skip.type = "button";
+      skip.setAttribute("aria-label", t("plans.skipAria", {name: sc.name}));
+      skip.addEventListener("click", () => {
+        try { commit(SCH.skipOccurrence(state, sc.id, o.dueDate, nowISO())); toast(t("msg.planSkipped")); } catch (e) { toast(I.err(e)); }
+      });
+      meta.append(ok, skip);
+    }
+    row.append(meta);
+    return row;
+  }
+  // только что подтверждённый давний платёж остаётся в списке (по createdAt записи), чтобы было видно отклонение от плана
+  function recentOp(id) { const op = state.operations.find(x => x.id === id); return !!op && !!op.createdAt && Date.parse(op.createdAt) > Date.now() - 3 * 864e5; }
+  function renderPlanSoon() {
+    const td = today();
+    const list = SCH.occurrences(state, {from: addDays(td, -60), to: addDays(td, SOON_DAYS), today: td})
+      .filter(o => o.status !== "skipped" && (o.status !== "confirmed" || o.dueDate >= addDays(td, -DONE_DAYS) || recentOp(o.opId)));
+    const rows = list.map(o => { const sc = schedById(o.scheduleId); return sc ? planRow(o, sc) : null; }).filter(Boolean);
+    $("pl-soon").replaceChildren(...(rows.length ? rows : [node("div", "muted pl-line", t("plans.soonEmpty"))]));
+  }
+  function renderPlanForecast() {
+    const td = today(), view = balViewKey(), bd = views.breakdown(state);
+    const active = state.schedules.some(s => !s.archived && !s.paused);
+    $("pl-fc-view").textContent = bd.hasCards || bd.hasLoans ? t("plans.fc.view", {view: t({all: "balance.vAll", noLoans: "balance.vNoLoans", noCards: "balance.vNoCards", ownOnly: "balance.vOwn"}[view]).replace(/^\[|\]$/g, "")}) : "";
+    $("pl-fc-deficit").hidden = true;
+    $("pl-chart").replaceChildren(); plFc = null;
+    if (!active) { $("pl-fc-line").textContent = t("plans.fc.empty"); $("pl-fc-tip").textContent = ""; return; }
+    const fc = FC.project(state, {today: td, days: FC_DAYS, view});
+    plFc = fc;
+    if (fc.untilIncome && fc.nextIncome) {
+      const u = fc.untilIncome;
+      $("pl-fc-line").textContent = t(u.plannedIn > 0 ? "plans.fc.untilIn" : "plans.fc.until", {name: fc.nextIncome.name, day: anDay(u.date), out: money(u.plannedOut), in: money(u.plannedIn), end: money(u.endBalance)});
+    } else $("pl-fc-line").textContent = t("plans.fc.noIncome", {sum: money(fc.minBalance), day: anDay(fc.minDate)});
+    if (fc.deficitDate) {
+      const p = fc.points.find(x => x.date === fc.deficitDate);
+      $("pl-fc-deficit").textContent = t("plans.fc.deficit", {day: anDay(fc.deficitDate), sum: money(-p.balance)});
+      $("pl-fc-deficit").hidden = false;
+    }
+    renderPlanChart();
+  }
+  function plTip() {
+    const fc = plFc;
+    if (!fc || plSel === null || !fc.points[plSel]) { $("pl-fc-tip").textContent = fc ? t("plans.fc.tapHint") : ""; $("pl-fc-tip").classList.toggle("hint", !!fc); return; }
+    const p = fc.points[plSel];
+    $("pl-fc-tip").classList.remove("hint");
+    $("pl-fc-tip").textContent = t("plans.fc.tip", {day: anDay(p.date), sum: money(p.balance)});
+  }
+  function renderPlanChart() {
+    const fc = plFc, host = $("pl-chart");
+    if (!fc) return;
+    const pts = fc.points, n = pts.length, vals = pts.map(p => p.balance);
+    const W = Math.max(260, Math.floor(host.clientWidth || 320)), H = 176, top = 16, bot = 22, ph = H - top - bot;
+    let hi = Math.max(0, ...vals), lo = Math.min(0, ...vals);
+    if (hi === lo) hi = lo + 100;
+    const pad = (hi - lo) * 0.08; hi += pad; if (lo < 0) lo -= pad;
+    const y = v => top + (hi - v) / (hi - lo) * ph, x = i => 1 + i / (n - 1) * (W - 2);
+    const start = views.breakdown(state).views[balViewKey()];
+    const segs = [];
+    let cur = null;
+    for (let i = 0; i < n; i++) {
+      const v = vals[i], neg = v < 0;
+      if (i > 0 && (vals[i - 1] < 0) !== neg) {
+        const f = vals[i - 1] / (vals[i - 1] - v), cx = x(i - 1) + f * (x(i) - x(i - 1));
+        cur.pts.push([cx, y(0)]); cur = {neg, pts: [[cx, y(0)]]}; segs.push(cur);
+      }
+      if (!cur) { cur = {neg, pts: []}; segs.push(cur); }
+      cur.pts.push([x(i), y(v)]);
+    }
+    const f1 = v => v.toFixed(1);
+    const poly = s => s.pts.map(p => f1(p[0]) + "," + f1(p[1])).join(" ");
+    let out = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${t("plans.fc.chartAria", {sum: money(fc.minBalance), day: anDay(fc.minDate)})}">`;
+    const maxV = Math.max(...vals);
+    if (maxV > 0) out += `<line class="ch-grid" x1="0" x2="${W}" y1="${y(maxV)}" y2="${y(maxV)}"/><text class="ch-t" x="0" y="${y(maxV) - 3}">${compact(maxV)}</text>`;
+    out += `<line class="pl-zero" x1="0" x2="${W}" y1="${y(0)}" y2="${y(0)}"/><text class="ch-t" x="0" y="${y(0) - 3}">0</text>`;
+    if (lo < 0) { const minV = Math.min(...vals); out += `<text class="ch-t pl-negt" x="0" y="${y(minV) + 11}">${compact(minV)}</text>`; }
+    for (const s of segs) {
+      if (s.neg) out += `<polygon class="pl-area" points="${poly(s)} ${f1(s.pts[s.pts.length - 1][0])},${f1(y(0))} ${f1(s.pts[0][0])},${f1(y(0))}"/>`;
+      out += `<polyline class="pl-ln${s.neg ? " neg" : ""}" points="${poly(s)}"/>`;
+    }
+    for (let i = 0; i < n; i++) {
+      const prev = i === 0 ? start : vals[i - 1];
+      if (vals[i] === prev) continue;
+      out += `<circle class="pl-dot ${vals[i] > prev ? "in" : "out"}${vals[i] < 0 ? " neg" : ""}" cx="${f1(x(i))}" cy="${f1(y(vals[i]))}" r="3"/>`;
+    }
+    out += `<line class="ch-base" x1="0" x2="${W}" y1="${top + ph}" y2="${top + ph}"/>`;
+    for (const i of [0, 15, 30, 45, 60]) {
+      if (i >= n) continue;
+      out += `<text class="ch-t" x="${f1(x(i))}" y="${H - 6}" text-anchor="${i === 0 ? "start" : i === n - 1 ? "end" : "middle"}">${anDay(pts[i].date)}</text>`;
+    }
+    if (plSel !== null && plSel < n) out += `<line class="pl-sel" x1="${f1(x(plSel))}" x2="${f1(x(plSel))}" y1="${top}" y2="${top + ph}"/>`;
+    host.innerHTML = out + "</svg>";
+    plTip();
+  }
+  $("pl-chart").addEventListener("click", ev => {
+    if (!plFc) return;
+    const r = $("pl-chart").getBoundingClientRect();
+    plSel = Math.max(0, Math.min(plFc.points.length - 1, Math.round((ev.clientX - r.left) / r.width * (plFc.points.length - 1))));
+    renderPlanChart();
+  });
+  function planListRow(sc, extra) {
+    const row = node("button", "pl-reg"); row.type = "button";
+    row.append(node("span", `mark ${sc.type}`, planMark(sc.type)), node("span", "pl-title", sc.name), node("span", `pl-amt ${sc.type}`, extra.amount));
+    row.append(node("span", "pl-meta pl-meta-text", extra.meta));
+    row.addEventListener("click", () => openPlanForm(sc.id));
+    return row;
+  }
+  function renderPlanSubs() {
+    const sub = SCH.subscriptions(state);
+    $("pl-subs-line").textContent = sub.items.length ? t("plans.subs.total", {m: money(sub.perMonth), y: money(sub.perYear)}) : t("plans.subs.empty");
+    $("pl-subs").replaceChildren(...sub.items.map(({schedule: sc, monthlyCents}) =>
+      planListRow(sc, {amount: t("plans.perMonth", {sum: money(monthlyCents)}), meta: `${money(sc.amountCents)}, ${ruleText(sc)}`})));
+  }
+  function renderPlanRegular() {
+    const td = today();
+    const next = new Map();
+    for (const o of SCH.occurrences(state, {from: td, to: addDays(td, 400), today: td})) if (o.status !== "confirmed" && o.status !== "skipped" && !next.has(o.scheduleId)) next.set(o.scheduleId, o.dueDate);
+    const live = state.schedules.filter(s => !s.archived);
+    const rows = [];
+    for (const type of ["income", "expense", "transfer"]) {
+      const part = live.filter(s => s.type === type).sort((a, b) => a.name.localeCompare(b.name, I.locale()));
+      if (!part.length) continue;
+      rows.push(node("div", "pl-group", t("plans.g." + type)));
+      for (const sc of part) {
+        const parts = [ruleText(sc)];
+        if (sc.paused) parts.push(t("plans.paused")); else if (next.get(sc.id)) parts.push(t("plans.next", {day: anDay(next.get(sc.id))}));
+        if (sc.subscription) parts.push(t("plans.subTag"));
+        const row = planListRow(sc, {amount: `${planSign(sc.type)}${money(sc.amountCents)}`, meta: parts.join(" · ")});
+        if (sc.paused) row.classList.add("paused");
+        rows.push(row);
+      }
+    }
+    $("pl-regular").replaceChildren(...(rows.length ? rows : [node("div", "muted pl-line", t("plans.regEmpty"))]));
+    const arch = state.schedules.filter(s => s.archived);
+    $("pl-archived-line").hidden = !arch.length;
+    $("pl-archived-count").textContent = arch.length;
+    $("pl-archived-toggle").textContent = t(showPlanArchived ? "plans.hide" : "plans.show");
+    $("pl-archived-toggle").setAttribute("aria-expanded", String(showPlanArchived));
+    $("pl-archived").hidden = !arch.length || !showPlanArchived;
+    $("pl-archived").replaceChildren(...arch.map(sc => { const r = planListRow(sc, {amount: `${planSign(sc.type)}${money(sc.amountCents)}`, meta: ruleText(sc)}); r.classList.add("paused"); return r; }));
+  }
+  const recKey = m => m.trim().toLowerCase();
+  function renderPlanDetect() {
+    const hidden = new Set(settings.hiddenRecurring || []);
+    const list = SCH.detectRecurring(state, today()).filter(d => !hidden.has(recKey(d.merchant)));
+    $("pl-detect-sec").hidden = !list.length;
+    $("pl-detect").replaceChildren(...list.map(d => {
+      const row = node("div", "pl-row detect");
+      row.append(node("span", "pl-mark", "[?]"), node("span", "pl-title", t("plans.detect.line", {merchant: d.merchant, sum: money(d.amountCents), rule: t("plans.r." + d.freq + "Short")})));
+      const meta = node("div", "pl-meta");
+      const make = node("button", "bracket pl-ok", t("plans.detect.make")); make.type = "button";
+      make.setAttribute("aria-label", t("plans.detect.makeAria", {merchant: d.merchant}));
+      make.addEventListener("click", () => openPlanForm(null, {type: "expense", name: d.merchant, merchant: d.merchant, amountCents: d.amountCents, categoryId: d.categoryId, accountId: d.accountId,
+        rule: d.freq === "monthly" ? {freq: "monthly", interval: 1, day: d.day} : {freq: "weekly", interval: 1, weekday: d.day}, startDate: today(), endDate: null, subscription: false}));
+      const no = node("button", "bracket", t("plans.detect.no")); no.type = "button";
+      no.setAttribute("aria-label", t("plans.detect.noAria", {merchant: d.merchant}));
+      no.addEventListener("click", () => {
+        persistNotice(boot.set({hiddenRecurring: [...(settings.hiddenRecurring || []), recKey(d.merchant)]}));
+        settings = boot.get(); renderPlanDetect(); toast(t("msg.planHidden"));
+      });
+      meta.append(make, no); row.append(meta);
+      return row;
+    }));
+  }
+  function renderPlans() {
+    renderPlanSoon(); renderPlanForecast(); renderPlanSubs(); renderPlanRegular(); renderPlanDetect();
+  }
+  $("pl-archived-toggle").addEventListener("click", () => { showPlanArchived = !showPlanArchived; renderPlanRegular(); });
+  $("plans-nav").addEventListener("click", () => setTab("plans"));
+  let plResize = null;
+  window.addEventListener("resize", () => { if (tab !== "plans") return; clearTimeout(plResize); plResize = setTimeout(renderPlanChart, 120); });
+
+  // ----- форма регулярного платежа -----
+  const opt = (v, label) => { const o = document.createElement("option"); o.value = v; o.textContent = label; return o; };
+  function planAccounts(sel, value) {
+    const list = acct.activeAccounts(state).slice();
+    const cur = value && accById(value);
+    if (cur && !list.includes(cur)) list.push(cur);
+    fillSelect(sel, list, value);
+  }
+  function planDayOptions() {
+    const monthly = planFreq === "monthly", keep = $("plan-day").value;
+    $("plan-day").replaceChildren(...Array.from({length: 31}, (_, i) => opt(String(i + 1), monthly && i === 30 ? `31 · ${t("plans.r.last")}` : String(i + 1))));
+    $("plan-day").value = keep || "1";
+    $("plan-day-label").textContent = t(monthly ? "plans.f.dayMonth" : "plans.f.dayYear");
+  }
+  function syncPlanForm() {
+    const type = planType, plain = type !== "transfer";
+    document.querySelectorAll("[data-plan-type]").forEach(b => { const on = b.dataset.planType === type; b.classList.toggle("selected", on); b.setAttribute("aria-pressed", String(on)); });
+    document.querySelectorAll("[data-plan-freq]").forEach(b => { const on = b.dataset.planFreq === planFreq; b.classList.toggle("active", on); b.setAttribute("aria-pressed", String(on)); });
+    $("plan-account-label").textContent = t(type === "income" ? "form.to" : "form.from");
+    $("plan-to-field").hidden = plain;
+    $("plan-category-field").hidden = !plain; $("plan-merchant-field").hidden = !plain;
+    $("plan-sub").hidden = type !== "expense";
+    if (plain) {
+      $("plan-merchant-label").textContent = t(`form.merchant.${type}`);
+      $("plan-merchant").placeholder = t(`form.merchantPh.${type}`);
+    }
+    $("plan-interval-field").hidden = planFreq !== "days";
+    $("plan-weekday-field").hidden = planFreq !== "weekly";
+    $("plan-month-field").hidden = planFreq !== "yearly";
+    $("plan-date-field").hidden = planFreq === "weekly" || planFreq === "days";
+    $("plan-date-field").classList.toggle("two", planFreq === "yearly");
+    planDayOptions();
+    $("plan-sub").classList.toggle("selected", planSub); $("plan-sub").setAttribute("aria-checked", String(planSub));
+    $("plan-end-field").hidden = !planEnd;
+    $("plan-end-toggle").textContent = t(planEnd ? "plans.f.endClear" : "plans.f.endSet");
+    renderPlanCats();
+  }
+  function renderPlanCats() {
+    if (planType === "transfer") return;
+    const ids = suggest.recentCategories(state, planType, 6, today()).filter(id => { const c = catById(id); return c && c.kind === planType; });
+    if (planCat && !ids.includes(planCat)) ids.unshift(planCat);
+    $("plan-category-chips").replaceChildren(...ids.map(id => chip(catPath(catById(id)), id === planCat, () => { planCat = planCat === id ? null : id; renderPlanCats(); })));
+    if (!$("plan-category-tree").hidden) {
+      const rows = [], item = (c, child) => {
+        const b = node("button", `tree-item${child ? " child" : ""}${c.id === planCat ? " selected" : ""}`, (child ? "└ " : "") + catName(c)); b.type = "button";
+        b.addEventListener("click", () => { planCat = c.id; togglePlanTree(false); renderPlanCats(); });
+        return b;
+      };
+      const none = node("button", `tree-item${planCat === null ? " selected" : ""}`, t("form.categoryNone")); none.type = "button";
+      none.addEventListener("click", () => { planCat = null; togglePlanTree(false); renderPlanCats(); });
+      rows.push(none);
+      for (const {cat, children} of cats.tree(state, planType)) { rows.push(item(cat, false)); children.forEach(k => rows.push(item(k, true))); }
+      const cur = planCat && catById(planCat);
+      if (cur && cur.archived) rows.push(item(cur, !!cur.parentId));
+      $("plan-category-tree").replaceChildren(...rows);
+    }
+  }
+  function togglePlanTree(open) {
+    $("plan-category-tree").hidden = !open;
+    $("plan-category-all").setAttribute("aria-expanded", String(open));
+    if (open) renderPlanCats();
+  }
+  function openPlanForm(id, preset = null) {
+    planEditing = id;
+    const sc = id ? schedById(id) : null, p = sc || preset || {};
+    if (id && !sc) return;
+    planPreset = sc;
+    planType = p.type || "expense"; planCat = p.categoryId || null; planFreq = p.rule ? p.rule.freq : "monthly";
+    planSub = !!p.subscription; planEnd = !!p.endDate;
+    const r = p.rule || {}, d = new Date();
+    $("plan-title").textContent = t(sc ? "plans.f.edit" : "plans.f.new");
+    $("plan-name").value = p.name || "";
+    $("plan-amount").value = p.amountCents ? amountInput(p.amountCents) : "";
+    $("plan-merchant").value = p.merchant || "";
+    planAccounts($("plan-account"), p.accountId || (acct.activeAccounts(state)[0] || state.accounts[0]).id);
+    planAccounts($("plan-to"), p.toAccountId || (acct.activeAccounts(state).find(a => a.id !== $("plan-account").value) || {}).id);
+    if ($("plan-to").value === $("plan-account").value) { const other = [...$("plan-to").options].find(o => o.value !== $("plan-account").value); if (other) $("plan-to").value = other.value; }
+    $("plan-weekday").replaceChildren(...Array.from({length: 7}, (_, i) => opt(String(i + 1), wdName(i + 1))));
+    $("plan-weekday").value = String(r.weekday || ((d.getDay() + 6) % 7) + 1);
+    $("plan-month").replaceChildren(...Array.from({length: 12}, (_, i) => opt(String(i + 1), lowerEn(dtf({month: "long"}, `2024-${String(i + 1).padStart(2, "0")}-01`)))));
+    $("plan-month").value = String(r.month || d.getMonth() + 1);
+    $("plan-day").replaceChildren();
+    $("plan-day").value = "";
+    planFreq = planFreq || "monthly";
+    $("plan-interval").value = r.freq === "days" ? String(r.interval) : "14";
+    $("plan-start").value = p.startDate || today();
+    $("plan-end").value = p.endDate || p.startDate || today();
+    $("plan-error").textContent = "";
+    togglePlanTree(false);
+    planDayOptions();
+    $("plan-day").value = String(r.day || d.getDate());
+    syncPlanForm();
+    $("plan-pause").hidden = !sc; $("plan-archive").hidden = !sc;
+    if (sc) {
+      $("plan-pause").textContent = t(sc.paused ? "plans.f.resume" : "plans.f.pause");
+      $("plan-archive").textContent = t(sc.archived ? "plans.f.unarchive" : "plans.f.archive");
+      $("plan-pause").hidden = sc.archived;
+    }
+    openSheet($("plan-box"));
+    $("plan-name").focus();
+  }
+  document.querySelectorAll("[data-plan-type]").forEach(b => b.addEventListener("click", () => {
+    planType = b.dataset.planType;
+    const c = planCat && catById(planCat);
+    if (planType === "transfer" || (c && c.kind !== planType)) planCat = null;
+    if (planType !== "expense") planSub = false;
+    syncPlanForm();
+  }));
+  document.querySelectorAll("[data-plan-freq]").forEach(b => b.addEventListener("click", () => {
+    const prev = $("plan-day").value;
+    planFreq = b.dataset.planFreq; syncPlanForm(); $("plan-day").value = prev;
+  }));
+  $("plan-category-all").addEventListener("click", () => togglePlanTree($("plan-category-tree").hidden));
+  $("plan-sub").addEventListener("click", () => { planSub = !planSub; syncPlanForm(); });
+  $("plan-end-toggle").addEventListener("click", () => { planEnd = !planEnd; syncPlanForm(); });
+  $("plan-account").addEventListener("change", () => {
+    if (planType !== "transfer" || $("plan-account").value !== $("plan-to").value) return;
+    const other = [...$("plan-to").options].find(o => o.value !== $("plan-account").value); if (other) $("plan-to").value = other.value;
+  });
+  $("plan-to").addEventListener("change", () => {
+    if ($("plan-account").value !== $("plan-to").value) return;
+    const other = [...$("plan-account").options].find(o => o.value !== $("plan-to").value); if (other) $("plan-account").value = other.value;
+  });
+  $("plan-form").addEventListener("submit", event => {
+    event.preventDefault(); $("plan-error").textContent = "";
+    try {
+      const name = $("plan-name").value.trim();
+      if (!name) throw new Error(t("err.planName"));
+      const amountCents = M.parseAmount($("plan-amount").value);
+      const accountId = $("plan-account").value;
+      if (!accountId) throw new Error(t("err.pickAccount"));
+      const transfer = planType === "transfer", toId = $("plan-to").value;
+      if (transfer && (!toId || toId === accountId)) throw new Error(t("err.twoAccounts"));
+      let rule;
+      const keepN = planPreset && planPreset.rule.freq === planFreq ? planPreset.rule.interval : 1;
+      if (planFreq === "monthly") rule = {freq: "monthly", interval: keepN, day: +$("plan-day").value};
+      else if (planFreq === "weekly") rule = {freq: "weekly", interval: keepN, weekday: +$("plan-weekday").value};
+      else if (planFreq === "yearly") rule = {freq: "yearly", interval: keepN, month: +$("plan-month").value, day: +$("plan-day").value};
+      else {
+        const raw = $("plan-interval").value.trim(), n = /^\d{1,3}$/.test(raw) ? +raw : 0;
+        if (n < 1 || n > 365) throw new Error(t("err.planInterval"));
+        rule = {freq: "days", interval: n};
+      }
+      const startDate = $("plan-start").value;
+      if (!M.validDate(startDate)) throw new Error(t("err.date"));
+      const endDate = planEnd ? $("plan-end").value : null;
+      if (endDate !== null && !M.validDate(endDate)) throw new Error(t("err.date"));
+      if (endDate && endDate < startDate) throw new Error(t("err.planEnd"));
+      const merchant = $("plan-merchant").value.trim();
+      const data = {type: planType, name, amountCents, accountId, categoryId: transfer ? null : planCat, rule, startDate, endDate, subscription: planType === "expense" && planSub,
+        merchant: transfer || !merchant ? undefined : merchant, toAccountId: transfer ? toId : undefined};
+      if (planEditing) commit(SCH.updateSchedule(state, planEditing, data, nowISO()));
+      else commit(SCH.addSchedule(state, {id: newId(), ...data}, nowISO()));
+      closeSheet(); toast(t(planEditing ? "msg.planSaved" : "msg.planAdded"));
+    } catch (e) { $("plan-error").textContent = I.err(e); }
+  });
+  $("plan-pause").addEventListener("click", () => {
+    const sc = planEditing && schedById(planEditing); if (!sc) return;
+    try { commit(SCH.setPaused(state, sc.id, !sc.paused, nowISO())); closeSheet(); toast(t(sc.paused ? "msg.planResumed" : "msg.planPaused")); } catch (e) { $("plan-error").textContent = I.err(e); }
+  });
+  $("plan-archive").addEventListener("click", () => {
+    const sc = planEditing && schedById(planEditing); if (!sc) return;
+    try { commit(SCH.archiveSchedule(state, sc.id, nowISO(), !sc.archived)); closeSheet(); toast(t(sc.archived ? "msg.planUnarchived" : "msg.planArchived")); } catch (e) { $("plan-error").textContent = I.err(e); }
+  });
+  $("plan-add").addEventListener("click", () => openPlanForm(null));
+  $("plan-close").addEventListener("click", closeSheet);
 
   function applyLanguage() {
     I.setLang(I.resolve(settings.lang));
