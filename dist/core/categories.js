@@ -8,14 +8,14 @@
     return c;
   };
   const put = (state, categories) => validate({...state, categories});
-  function addCategory(state, {id, name, parentId = null, kind}) {
+  function addCategory(state, {id, name, parentId = null, kind}, nowISO = new Date().toISOString()) {
     if (typeof name !== "string" || !name.trim() || name.length > 100) throw new Error("Название категории — от 1 до 100 символов.");
     const order = state.categories.reduce((m, c) => Math.max(m, c.order), -1) + 1;
-    return put(state, [...state.categories, {id, key: null, name: name.trim(), parentId: parentId ?? null, kind, archived: false, order}]);
+    return put(state, [...state.categories, {id, key: null, name: name.trim(), parentId: parentId ?? null, kind, archived: false, order, updatedAt: nowISO}]);
   }
-  function updateCategory(state, id, patch) {
+  function updateCategory(state, id, patch, nowISO = new Date().toISOString()) {
     const old = find(state, id);
-    const next = {...old};
+    const next = {...old, updatedAt: nowISO};
     if (patch.name !== undefined) {
       if (typeof patch.name !== "string" || !patch.name.trim() || patch.name.length > 100) throw new Error("Название категории — от 1 до 100 символов.");
       next.name = patch.name.trim();
@@ -24,9 +24,9 @@
     if (patch.order !== undefined) next.order = patch.order;
     return put(state, state.categories.map(c => c.id === id ? next : c));
   }
-  function archiveCategory(state, id, archived = true) {
+  function archiveCategory(state, id, archived = true, nowISO = new Date().toISOString()) {
     find(state, id);
-    return put(state, state.categories.map(c => c.id === id ? {...c, archived: !!archived} : c));
+    return put(state, state.categories.map(c => c.id === id ? {...c, archived: !!archived, updatedAt: nowISO} : c));
   }
   function tree(state, kind) {
     const live = state.categories.filter(c => c.kind === kind && !c.archived).map((c, i) => ({c, i}))

@@ -74,3 +74,28 @@ test("cookie: флаги и разбор", async () => {
   for (const f of ["HttpOnly", "Secure", "SameSite=Lax", "Max-Age=5"]) assert.ok(c.includes(f));
   assert.equal(U.parseCookies("a=1; fl_session=xyz; b=2").fl_session, "xyz");
 });
+
+test("sync decide: нет записи / новее / равно — принять; старее — stale", async () => {
+  const U = await load();
+  const T = "2026-10-21T10:00:00.000Z";
+  assert.equal(U.decide(null, {updatedAt: T}), "accept");
+  assert.equal(U.decide({updated_at: T}, {updatedAt: "2026-10-21T10:00:00.001Z"}), "accept");
+  assert.equal(U.decide({updated_at: T}, {updatedAt: T}), "accept");
+  assert.equal(U.decide({updated_at: T}, {updatedAt: "2026-10-21T09:59:59.999Z"}), "stale");
+  assert.equal(U.decide({updated_at: T}, {updatedAt: "мусор"}), "stale");
+  assert.equal(U.decide({updatedAt: T}, {updatedAt: "2026-10-21T10:00:01Z"}), "accept");
+});
+test("sync validateChange: kind, id, время, размер", async () => {
+  const U = await load();
+  const ok = {kind: "op", id: "o-1", updatedAt: "2026-10-21T10:00:00Z", deleted: false, data: {a: 1}};
+  const r = U.validateChange(ok);
+  assert.equal(r.ok, true);
+  assert.equal(r.change.updatedAt, "2026-10-21T10:00:00.000Z");
+  assert.equal(U.validateChange({...ok, kind: "evil"}).ok, false);
+  assert.equal(U.validateChange({...ok, id: "a b"}).ok, false);
+  assert.equal(U.validateChange({...ok, updatedAt: "2026-10-21"}).ok, false);
+  assert.equal(U.validateChange({...ok, deleted: 0}).ok, false);
+  assert.equal(U.validateChange({...ok, data: [1]}).ok, false);
+  assert.equal(U.validateChange({...ok, data: {s: "x".repeat(70000)}}).error, "too_large");
+  assert.equal(U.validateChange({...ok, enc: 1, data: "cipher"}).change.enc, 1);
+});

@@ -36,8 +36,9 @@
       if (!plain(c) || typeof c.id !== "string" || !ID.test(c.id) || byId.has(c.id) || !["expense", "income"].includes(c.kind) ||
         !(c.parentId === null || typeof c.parentId === "string") || typeof c.archived !== "boolean" || !Number.isSafeInteger(c.order) ||
         (c.key == null && c.name == null) || (c.key != null && (!nonEmpty(c.key) || c.key.length > 100)) ||
-        (c.name != null && (!nonEmpty(c.name) || c.name.length > 100))) bad();
+        (c.name != null && (!nonEmpty(c.name) || c.name.length > 100)) || (c.updatedAt !== undefined && !isoOk(c.updatedAt))) bad();
       const cat = {id: c.id, key: c.key == null ? null : c.key, name: c.name == null ? null : c.name, parentId: c.parentId, kind: c.kind, archived: c.archived, order: c.order};
+      if (c.updatedAt !== undefined) cat.updatedAt = c.updatedAt;
       byId.set(cat.id, cat);
       return cat;
     });
@@ -154,10 +155,11 @@
     const accounts = data.accounts.map(a => {
       if (!plain(a) || typeof a.id !== "string" || !ID.test(a.id) || accountIds.has(a.id) || typeof a.name !== "string" || !a.name.trim() || a.name.length > 100 ||
         !KINDS.includes(a.kind) || !cents(a.openingCents) || !validDate(a.openingDate) || typeof a.archived !== "boolean" ||
-        (a.order !== undefined && !Number.isSafeInteger(a.order))) throw new Error(BAD_ACCOUNTS);
+        (a.order !== undefined && !Number.isSafeInteger(a.order)) || (a.updatedAt !== undefined && !isoOk(a.updatedAt))) throw new Error(BAD_ACCOUNTS);
       accountIds.add(a.id);
       const acc = {id: a.id, name: a.name, kind: a.kind, openingCents: a.openingCents, openingDate: a.openingDate, archived: a.archived};
       if (a.order !== undefined) acc.order = a.order;
+      if (a.updatedAt !== undefined) acc.updatedAt = a.updatedAt;
       return acc;
     });
     const {cats, byId: catById} = normCategories(data.categories);

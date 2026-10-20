@@ -127,3 +127,37 @@ export function parseIdToken(idToken, {aud, nowSec = Math.floor(Date.now() / 100
 export function safeAvatar(url) {
   try { const u = new URL(url); return u.protocol === "https:" ? u.href.slice(0, 500) : null; } catch { return null; }
 }
+
+// ---- Синхронизация ----
+export const SYNC_KINDS = ["op", "account", "category", "schedule", "reserve", "budget", "loan"];
+export const SYNC_LIMITS = {changes: 500, dataBytes: 65536, records: 100000, bodyBytes: 2 * 1024 * 1024, pull: 500};
+const SYNC_ID = /^[\w-]{1,100}$/;
+const SYNC_TIME = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{1,3})?Z$/;
+
+// ISO-время в единый формат (миллисекунды, Z), чтобы строки сравнивались лексикографически; невалидное → null.
+export function normTime(v) {
+  if (typeof v !== "string" || !SYNC_TIME.test(v)) return null;
+  const t = Date.parse(v);
+  return Number.isFinite(t) ? new Date(t).toISOString() : null;
+}
+
+// Правило принятия: записи нет или updatedAt >= сохранённого (равенство — идемпотентно). stored: {updated_at|updatedAt} | null.
+export function decide(stored, incoming) {
+  if (!stored) return "accept";
+  const s = Date.parse(stored.updated_at ?? stored.updatedAt), i = Date.parse(incoming && incoming.updatedAt);
+  if (!Number.isFinite(i)) return "stale";
+  if (!Number.isFinite(s)) return "accept";
+  return i >= s ? "accept" : "stale";
+}
+
+// Проверка одной change; возвращает {ok, change:{kind,id,updatedAt,deleted,enc,json}} или {ok:false}.
+export function validateChange(c) {
+  if (!c || typeof c !== "object" || Array.isArray(c)) return {ok: false};
+  const updatedAt = normTime(c.updatedAt);
+  const enc = c.enc ? 1 : 0;
+  if (!SYNC_KINDS.includes(c.kind) || typeof c.id !== "string" || !SYNC_ID.test(c.id) || !updatedAt || typeof c.deleted !== "boolean") return {ok: false};
+  if (enc ? typeof c.data !== "string" : (!c.data || typeof c.data !== "object" || Array.isArray(c.data))) return {ok: false};
+  const json = JSON.stringify(c.data);
+  if (new TextEncoder().encode(json).length > SYNC_LIMITS.dataBytes) return {ok: false, error: "too_large"};
+  return {ok: true, change: {kind: c.kind, id: c.id, updatedAt, deleted: c.deleted, enc, json}};
+}

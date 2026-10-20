@@ -15,25 +15,25 @@
     const key = name.trim().toLowerCase();
     if (state.accounts.some(a => !a.archived && a.id !== exceptId && a.name.trim().toLowerCase() === key)) throw new Error(DUP);
   }
-  function addAccount(state, {id, name, kind, openingCents, openingDate}) {
+  function addAccount(state, {id, name, kind, openingCents, openingDate}, nowISO = new Date().toISOString()) {
     checkName(state, name);
     const order = state.accounts.reduce((m, a) => Math.max(m, a.order ?? 0), -1) + 1;
-    const acc = {id, name: name.trim(), kind, openingCents: openingCents || 0, openingDate, archived: false, order};
+    const acc = {id, name: name.trim(), kind, openingCents: openingCents || 0, openingDate, archived: false, order, updatedAt: nowISO};
     return validate({...state, accounts: [...state.accounts, acc]});
   }
-  function updateAccount(state, id, patch) {
+  function updateAccount(state, id, patch, nowISO = new Date().toISOString()) {
     const old = find(state, id);
-    const next = {...old};
+    const next = {...old, updatedAt: nowISO};
     for (const k of ["name", "kind", "openingCents", "openingDate", "order"]) if (patch[k] !== undefined) next[k] = patch[k];
     checkName(state, next.name, id, old.archived);
     next.name = next.name.trim();
     return validate({...state, accounts: state.accounts.map(a => a.id === id ? next : a)});
   }
-  function archiveAccount(state, id, archived = true) {
+  function archiveAccount(state, id, archived = true, nowISO = new Date().toISOString()) {
     const acc = find(state, id);
     if (archived && !acc.archived && state.accounts.filter(a => !a.archived).length <= 1) throw new Error("Нужен хотя бы один счёт.");
     if (!archived && acc.archived) checkName(state, acc.name, id, false);
-    return validate({...state, accounts: state.accounts.map(a => a.id === id ? {...a, archived: !!archived} : a)});
+    return validate({...state, accounts: state.accounts.map(a => a.id === id ? {...a, archived: !!archived, updatedAt: nowISO} : a)});
   }
   function activeAccounts(state) {
     return state.accounts.map((a, i) => ({a, i})).filter(x => !x.a.archived)
