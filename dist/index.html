@@ -18,6 +18,7 @@
   <link rel="stylesheet" href="style.css">
   <script src="core/money.js" defer></script>
   <script src="core/schema.js" defer></script>
+  <script src="core/accounts.js" defer></script>
   <script src="core/journal.js" defer></script>
   <script src="core/views.js" defer></script>
   <script src="app.js" defer></script>
@@ -50,6 +51,14 @@
           <span class="qv-name">удалённые</span><span class="qv-count" id="trash-count">0</span>
         </button>
       </nav>
+      <div class="nav-group nav-accounts">
+        <div class="nsec"><span>// счета</span><button class="bracket" id="nav-add-account" type="button" aria-label="Добавить счёт">[+]</button></div>
+        <div id="nav-accounts"></div>
+        <button class="qv" id="accounts-nav" type="button" aria-current="false">
+          <svg class="ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg>
+          <span class="qv-name">все счета</span><span class="qv-count" id="nav-accounts-count">0</span>
+        </button>
+      </div>
       <div class="nav-group nav-data">
         <div class="nsec"><span>// данные</span></div>
         <button class="qv" id="export-button" type="button">
@@ -66,9 +75,35 @@
     </aside>
 
     <main class="journal">
+      <section class="box screen" id="screen-accounts" aria-labelledby="accounts-label">
+        <h2 class="box-label" id="accounts-label">счета</h2>
+        <div class="box-body">
+          <div id="accounts-list" class="acc-list"></div>
+          <div class="acc-total muted" id="accounts-total">// итого 0,00 ₽</div>
+          <div class="acc-archived muted" id="archived-line" hidden>// в архиве: <span id="archived-count">0</span> <button class="bracket" id="archived-toggle" type="button" aria-expanded="false">[показать]</button></div>
+          <div id="archived-list" class="acc-list" hidden></div>
+          <button type="button" class="btn primary acc-add" id="add-account">+ счёт</button>
+        </div>
+      </section>
+
+      <section class="box screen" id="screen-account" aria-labelledby="account-label">
+        <h2 class="box-label" id="account-label">счёт</h2>
+        <div class="box-body">
+          <button class="bracket acc-back" id="account-back" type="button">[← назад]</button>
+          <div class="balance-number" id="account-balance">0<span class="balance-decimals">,00 ₽</span></div>
+          <div class="muted" id="account-meta"></div>
+          <div class="acc-actions">
+            <button class="bracket" id="account-reconcile" type="button">[сверить с банком]</button>
+            <button class="bracket" id="account-edit" type="button">[изменить]</button>
+            <button class="bracket" id="account-archive" type="button">[в архив]</button>
+          </div>
+        </div>
+      </section>
+
       <div class="quick-actions s-journal" id="quick-actions">
         <button type="button" class="btn primary" id="add-income" data-new="income">+ пришло</button>
         <button type="button" class="btn ghost" id="add-expense" data-new="expense">− ушло</button>
+        <button type="button" class="btn ghost" id="add-transfer" data-new="transfer">⇄ перевёл</button>
       </div>
       <section class="box s-journal" id="journal-box" aria-labelledby="journal-title">
         <h2 class="box-label" id="journal-title">журнал</h2>
@@ -83,7 +118,9 @@
               <button class="filter active" type="button" data-filter="all" aria-pressed="true">[ все ]</button>
               <button class="filter" type="button" data-filter="expense" aria-pressed="false">[ расходы ]</button>
               <button class="filter" type="button" data-filter="income" aria-pressed="false">[ доходы ]</button>
+              <button class="filter" type="button" data-filter="transfer" aria-pressed="false">[ переводы ]</button>
             </div>
+            <select id="account-filter" class="account-filter" aria-label="Фильтр по счёту"><option value="all">все счета</option></select>
             <button class="search-toggle" id="search-toggle" type="button" aria-label="Поиск" aria-expanded="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></button>
             <label class="search-box">
               <svg class="ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
@@ -92,11 +129,6 @@
           </div>
           <div id="entries"></div>
         </div>
-      </section>
-
-      <section class="box screen" id="screen-accounts" aria-labelledby="accounts-label">
-        <h2 class="box-label" id="accounts-label">счета</h2>
-        <div class="box-body"><div class="log-line"><span class="tag warn">[--]</span><span class="log-name">появится на этапе 1</span></div></div>
       </section>
 
       <section class="box screen" id="screen-plans" aria-labelledby="plans-label">
@@ -135,7 +167,7 @@
             <div class="log-line"><span class="tag ok">[ok]</span><span class="log-name">доходы</span><strong class="income" id="income-total">+0,00 ₽</strong></div>
             <div class="log-line"><span class="tag warn">[--]</span><span class="log-name">расходы</span><strong id="expense-total">−0,00 ₽</strong></div>
           </div>
-          <div class="muted opening-line">// начальный остаток <span id="opening-value">0 ₽</span> <button class="bracket" id="opening-button" type="button" aria-label="Изменить начальный остаток">[изменить]</button></div>
+          <div class="muted opening-line">// счетов: <span id="accounts-count">1</span> <button class="bracket" id="accounts-link" type="button" aria-label="Открыть список счетов">[счета]</button></div>
           <div class="muted opening-line">// за всё время, без удалённых</div>
         </div>
       </section>
@@ -148,9 +180,13 @@
             <div class="type-switch" role="group" aria-label="Тип новой записи">
               <button type="button" data-type="expense" class="selected" aria-pressed="true">[ расход ]</button>
               <button type="button" data-type="income" aria-pressed="false">[ доход ]</button>
+              <button type="button" data-type="transfer" aria-pressed="false" id="transfer-switch">[ перевод ]</button>
             </div>
             <label class="field-label" for="amount">сумма</label>
             <div class="amount-field"><input id="amount" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off" required maxlength="20"><span aria-hidden="true">₽</span></div>
+            <div id="account-field"><label class="field-label" for="account" id="account-select-label">откуда</label><select id="account"></select></div>
+            <div id="to-field" hidden><label class="field-label" for="account-to">куда</label><select id="account-to"></select></div>
+            <div id="fee-field" hidden><label class="field-label" for="fee">комиссия <span class="muted">// необязательно</span></label><div class="amount-field"><input id="fee" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off" maxlength="20"><span aria-hidden="true">₽</span></div></div>
             <label class="field-label" for="note">заметка <span class="muted">// необязательно</span></label>
             <input id="note" type="text" placeholder="Например, кофе по дороге" maxlength="160" autocomplete="off">
             <div class="date-row muted" id="date-row">// дата: <span id="date-summary">сегодня</span> <button class="bracket" id="date-toggle" type="button">[изменить]</button></div>
@@ -180,19 +216,45 @@
 
   <div id="toast" class="toast" role="status" hidden><span class="toast-text" id="toast-message"></span><button id="undo-button" class="bracket accent-hover" type="button" hidden>[вернуть]</button><button id="toast-close" class="bracket" type="button" aria-label="Закрыть уведомление">[×]</button></div>
 
-  <dialog id="opening-dialog" aria-labelledby="opening-title">
-    <form id="opening-form" novalidate>
-      <h2 class="box-label" id="opening-title">начальный остаток</h2>
-      <button type="button" data-close="opening-dialog" class="bracket dialog-close" aria-label="Закрыть">[×]</button>
-      <div class="dialog-body">
-        <p class="muted">// сколько денег было до первой записи? Сумма учитывается в остатке, но не в доходах.</p>
-        <label class="field-label" for="opening-input">сумма в рублях</label>
-        <input id="opening-input" inputmode="decimal" type="text" placeholder="0,00" maxlength="21" autocomplete="off">
-        <div id="opening-error" class="form-error" role="alert"></div>
-        <button class="btn primary" type="submit"><span>Сохранить остаток</span><span aria-hidden="true">↵</span></button>
-      </div>
-    </form>
-  </dialog>
+  <section class="box sheet-form" id="account-box" role="dialog" aria-modal="true" aria-labelledby="account-title">
+    <h2 class="box-label" id="account-title">новый счёт</h2>
+    <button type="button" class="bracket sheet-x" id="account-close" aria-label="Закрыть">[×]</button>
+    <div class="box-body">
+      <form id="account-form" novalidate>
+        <label class="field-label first" for="account-name">название</label>
+        <input id="account-name" type="text" maxlength="100" autocomplete="off" placeholder="Например, Сбер">
+        <label class="field-label" for="account-kind">вид</label>
+        <select id="account-kind"></select>
+        <label class="field-label" for="account-opening">начальный остаток</label>
+        <div class="amount-field"><input id="account-opening" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off" maxlength="21"><span aria-hidden="true">₽</span></div>
+        <button type="button" class="bracket sign-btn" data-sign="account-opening">[± минус]</button>
+        <label class="field-label" for="account-date">дата начального остатка</label>
+        <input id="account-date" type="date" required>
+        <div id="account-error" class="form-error" role="alert"></div>
+        <button type="submit" class="btn primary" id="account-save"><span>Сохранить</span><span aria-hidden="true">↵</span></button>
+      </form>
+    </div>
+  </section>
+
+  <section class="box sheet-form" id="recon-box" role="dialog" aria-modal="true" aria-labelledby="recon-title">
+    <h2 class="box-label" id="recon-title">сверка</h2>
+    <button type="button" class="bracket sheet-x" id="recon-close" aria-label="Закрыть">[×]</button>
+    <div class="box-body">
+      <form id="recon-form" novalidate>
+        <label class="field-label first" for="recon-bank">сколько показывает банк?</label>
+        <div class="amount-field"><input id="recon-bank" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off" maxlength="21"><span aria-hidden="true">₽</span></div>
+        <button type="button" class="bracket sign-btn" data-sign="recon-bank">[± минус]</button>
+        <label class="field-label" for="recon-date">на дату</label>
+        <input id="recon-date" type="date" required>
+        <label class="field-label" for="recon-note">пояснение <span class="muted">// необязательно</span></label>
+        <input id="recon-note" type="text" maxlength="160" autocomplete="off" placeholder="Сверка с банком">
+        <div class="muted recon-line" id="recon-calc"></div>
+        <div class="recon-diff" id="recon-diff">// разница: —</div>
+        <div id="recon-error" class="form-error" role="alert"></div>
+        <button type="submit" class="btn primary" id="recon-save"><span>записать корректировку</span><span aria-hidden="true">↵</span></button>
+      </form>
+    </div>
+  </section>
 
   <dialog id="import-dialog" aria-labelledby="import-title">
     <h2 class="box-label" id="import-title">восстановить копию</h2>
