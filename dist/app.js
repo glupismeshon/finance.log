@@ -56,7 +56,7 @@
     $("date").value = today();
     $("date").max = today();
     $("form-error").textContent = "";
-    $("form-title").textContent = "Новая запись";
+    $("form-title").textContent = "новая запись";
     $("cancel-edit").hidden = true;
     setMode(mode);
     if (focus) $("amount").focus();
@@ -66,7 +66,7 @@
     $("amount").value = amountInput(amountOf(entry));
     $("date").value = entry.date;
     $("note").value = entry.note;
-    $("form-title").textContent = "Изменить запись";
+    $("form-title").textContent = "изменить запись";
     $("cancel-edit").hidden = false;
     $("form-error").textContent = "";
     setMode(entry.type);
@@ -87,11 +87,16 @@
     const container = $("entries"); container.replaceChildren();
     if (!entries.length) {
       const empty = node("div","empty-state");
-      empty.append(node("div","empty-symbol", trash ? "↶" : "[ ]"));
-      empty.append(node("h3","", query || filter !== "all" ? "Таких записей пока нет" : trash ? "Здесь пока пусто" : "Первая запись — начало"));
-      empty.append(node("p","", query || filter !== "all" ? "Попробуйте другой поиск или выберите «Все»." : trash ? "Удалённые операции остаются здесь. Их можно вернуть в журнал." : "Добавьте доход или расход. Ваш журнал будет расти вместе с вами."));
-      if (!trash && !query && filter === "all") {
-        const button = node("button","","+ Добавить первую запись");
+      const filtered = query || filter !== "all";
+      const line = (tag, cls, text) => { const p = node("div"); p.append(node("span",`tag ${cls}`,tag),document.createTextNode(text)); return p; };
+      empty.append(node("div","prompt","money.log"));
+      if (filtered) {
+        empty.append(line("[--]","warn","ничего не найдено"),node("div","muted","// попробуйте другой поиск или выберите [ все ]"));
+      } else if (trash) {
+        empty.append(line("[ok]","ok","удалённых записей нет"),node("div","muted","// удалённые операции остаются здесь, их можно вернуть"));
+      } else {
+        empty.append(line("[ok]","ok","журнал загружен"),line("[ok]","ok","записей пока нет"));
+        const button = node("button","btn primary","+ первая запись"); button.type = "button";
         button.addEventListener("click",()=>resetForm(true)); empty.append(button);
       }
       container.append(empty); return;
@@ -99,31 +104,28 @@
     let lastDate = "";
     for (const entry of entries) {
       if (entry.date !== lastDate) {
+        if (lastDate !== "") container.append(node("div","ovdiv"));
         lastDate = entry.date;
-        const group = node("div","day-heading");
-        group.append(node("span","",entry.date === today() ? "СЕГОДНЯ" : dateLabel(entry.date).toLocaleUpperCase("ru")));
-        if (entry.date === today()) group.append(node("span","",dateLabel(entry.date)));
-        container.append(group);
+        container.append(node("div","shead",entry.date === today() ? `сегодня · ${dateLabel(entry.date)}` : dateLabel(entry.date)));
       }
-      const row = node("article","entry-row"); row.dataset.id = entry.id;
-      const label = entry.type === "income" ? "Доход" : "Расход";
-      row.append(node("div",`entry-icon ${entry.type}`,entry.type === "income" ? "↙" : "↗"));
-      const description = node("div","entry-description");
-      description.append(node("div","entry-note",entry.note || label),node("div","entry-type",trash ? `${label} · удалено` : label));
-      row.append(description);
-      const right = node("div","entry-right");
-      right.append(node("div",`entry-money ${entry.type === "income" ? "income" : ""}`,`${entry.type === "income" ? "+" : "−"}${money(amountOf(entry))}`));
-      const actions = node("div","row-actions");
+      const row = node("article","todo"); row.dataset.id = entry.id;
+      const label = entry.type === "income" ? "доход" : "расход";
+      row.append(node("span",`mark ${entry.type}`,entry.type === "income" ? "[+]" : "[-]"));
+      row.append(node("span","ttitle",entry.note || label));
+      row.append(node("span",`tamount ${entry.type === "income" ? "income" : ""}`,`${entry.type === "income" ? "+" : "−"}${money(amountOf(entry))}`));
+      const meta = node("div","tmeta");
+      meta.append(node("span","tmeta-text",trash ? `${label} · удалено` : label));
+      const actions = node("span","row-actions");
       if (trash) {
-        const restore = node("button","","Вернуть");
+        const restore = node("button","bracket","[вернуть]");
         restore.setAttribute("aria-label",`Восстановить: ${entry.note || label}`);
         restore.addEventListener("click",()=>{try{commit(journal.setDeleted(state,entry.id,false));toast("Запись возвращена в журнал.");}catch(e){toast(e.message);}});
         actions.append(restore);
       } else {
-        const change = node("button","","Изменить");
+        const change = node("button","bracket","[изменить]");
         change.setAttribute("aria-label",`Изменить: ${entry.note || label}`);
         change.addEventListener("click",()=>edit(entry));
-        const remove = node("button","","Удалить");
+        const remove = node("button","bracket","[удалить]");
         remove.setAttribute("aria-label",`Удалить: ${entry.note || label}`);
         remove.addEventListener("click",()=>{
           try {
@@ -134,7 +136,7 @@
         });
         actions.append(change,remove);
       }
-      right.append(actions); row.append(right); container.append(row);
+      meta.append(actions); row.append(meta); container.append(row);
     }
   }
   function countWord(n) {
@@ -159,7 +161,7 @@
     $("trash-nav").classList.toggle("active",trash);
     $("journal-nav").setAttribute("aria-current",trash ? "false" : "page");
     $("trash-nav").setAttribute("aria-current",trash ? "page" : "false");
-    $("journal-title").textContent = trash ? "Удалённые операции" : "История операций";
+    $("journal-title").textContent = trash ? "удалённые" : "журнал";
     $("page-label").textContent = trash ? "удалённые" : "журнал";
     renderEntries();
   }
@@ -242,8 +244,9 @@
   });
   function theme(value) {
     document.documentElement.dataset.theme=value;
+    $("theme-button").textContent=value==="terminal"?"[светлая]":"[тёмная]";
     $("theme-button").setAttribute("aria-label",value==="terminal"?"Включить светлую тему":"Включить тёмную тему");
-    document.querySelector('meta[name="theme-color"]').content=value==="terminal"?"#121510":"#f4f3ed";
+    document.querySelector('meta[name="theme-color"]').content=value==="terminal"?"#0D1117":"#FAFAFA";
   }
   try{theme(localStorage.getItem("money.log.theme")==="paper"?"paper":"terminal");}catch{theme("terminal");}
   $("theme-button").addEventListener("click",()=>{

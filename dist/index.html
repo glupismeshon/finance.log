@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#121510">
+  <meta name="theme-color" content="#0D1117">
   <meta name="description" content="Личный журнал денег. Записывайте доходы и расходы без лишнего.">
   <title>money.log — журнал денег</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -12,6 +12,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="money.log">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="style.css">
   <script src="core/money.js" defer></script>
   <script src="core/schema.js" defer></script>
@@ -20,101 +23,135 @@
   <script src="app.js" defer></script>
 </head>
 <body>
-  <div class="shell">
-    <aside class="sidebar">
-      <a class="brand" href="./"><span class="brand-icon">₽</span> money<span class="accent">.log</span></a>
-      <div class="workspace"><span class="status-dot"></span> Личное пространство <span class="version">v0.1</span></div>
-      <div class="nav-label">// МОИ ДЕНЬГИ</div>
-      <nav aria-label="Разделы">
-        <button class="nav-item active" id="journal-nav" aria-current="page"><span>≡</span> Журнал <span class="nav-count" id="nav-count">0</span></button>
-        <button class="nav-item" id="trash-nav"><span>↶</span> Удалённые <span class="nav-count" id="trash-count">0</span></button>
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="money.log">
+      <span class="brand-icon" aria-hidden="true">₽</span>
+      <span class="brand-name">money.log</span><span class="cursor" aria-hidden="true">▊</span>
+    </a>
+    <span class="crumb muted"><span aria-hidden="true">~/</span><span id="page-label">журнал</span></span>
+    <div class="topbar-right">
+      <time id="today-label" class="muted"></time>
+      <button id="theme-button" class="bracket" type="button" aria-label="Включить светлую тему" title="Сменить тему">[светлая]</button>
+    </div>
+  </header>
+
+  <div id="storage-error" class="error-banner" role="alert" hidden></div>
+
+  <div class="layout">
+    <aside class="nav" aria-label="Меню">
+      <nav class="nav-group" aria-label="Разделы">
+        <div class="nsec"><span>// разделы</span></div>
+        <button class="qv active" id="journal-nav" type="button" aria-current="page">
+          <svg class="ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+          <span class="qv-name">журнал</span><span class="qv-count" id="nav-count">0</span>
+        </button>
+        <button class="qv" id="trash-nav" type="button" aria-current="false">
+          <svg class="ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v5M14 11v5"/></svg>
+          <span class="qv-name">удалённые</span><span class="qv-count" id="trash-count">0</span>
+        </button>
       </nav>
-      <div class="sidebar-note"><span class="accent">[ ✓ ]</span> Всё начинается<br>с одной записи.</div>
-      <div class="sidebar-bottom">
-        <div class="nav-label">// ВАШИ ДАННЫЕ</div>
-        <button class="utility" id="export-button"><span>↓</span> Скачать копию</button>
-        <button class="utility" id="import-button"><span>↑</span> Восстановить копию</button>
+      <div class="nav-group nav-data">
+        <div class="nsec"><span>// данные</span></div>
+        <button class="qv" id="export-button" type="button">
+          <svg class="ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg>
+          <span class="qv-name">скачать копию</span>
+        </button>
+        <button class="qv" id="import-button" type="button">
+          <svg class="ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5M4 21h16"/></svg>
+          <span class="qv-name">восстановить</span>
+        </button>
         <input id="import-file" type="file" accept=".json,application/json" hidden>
-        <div class="local-note"><span class="status-dot"></span><span>Хранятся в этом браузере.<br>Без аккаунта и синхронизации.</span></div>
       </div>
+      <p class="nav-note muted">// хранится в этом браузере.<br>// без аккаунта и синхронизации.</p>
     </aside>
-    <main>
-      <header class="topbar">
-        <div class="breadcrumb"><span>личное</span><span>/</span><strong id="page-label">журнал</strong></div>
-        <div class="topbar-right"><time id="today-label"></time><button id="theme-button" class="theme-button" aria-label="Включить светлую тему" title="Сменить тему">◐ <span>Тема</span></button></div>
-      </header>
-      <div class="content">
-        <div id="storage-error" class="error-banner" role="alert" hidden></div>
-        <section class="heading">
-          <div><div class="eyebrow">ДЕНЬ ЗА ДНЁМ</div><h1>Деньги под рукой<span class="accent">_</span></h1><p>Записать. Сохранить. Заниматься своим.</p></div>
-          <span class="live-badge"><span class="status-dot"></span> Личный журнал</span>
-        </section>
-        <section class="balance-panel" aria-label="Баланс за всё время">
-          <div class="balance-main">
-            <div class="balance-label">ОБЩИЙ ОСТАТОК <span class="currency-tag">RUB</span></div>
-            <div class="balance-number" id="balance">0<span class="balance-decimals">,00 ₽</span></div>
-            <button class="text-button" id="opening-button">Начальный остаток <span id="opening-value">0 ₽</span> <span>↗</span></button>
+
+    <main class="journal">
+      <section class="box" aria-labelledby="journal-title">
+        <h2 class="box-label" id="journal-title">журнал</h2>
+        <div class="box-body">
+          <div class="ihead">
+            <svg class="ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+            <span>записи</span><span id="entry-count" class="count">0 записей</span>
           </div>
-          <div class="flow-totals">
-            <div class="flow-total"><span class="flow-icon income">↙</span><div><div class="muted">Доходы</div><strong class="income" id="income-total">+0,00 ₽</strong></div></div>
-            <div class="flow-total"><span class="flow-icon expense">↗</span><div><div class="muted">Расходы</div><strong id="expense-total">−0,00 ₽</strong></div></div>
-            <span class="period-note">За всё время · без удалённых</span>
-          </div>
-        </section>
-        <div class="main-grid">
-          <section class="journal-panel">
-            <div class="section-heading"><h2><span class="accent">/</span> <span id="journal-title">История операций</span></h2><span id="entry-count" class="muted">0 записей</span></div>
-            <div class="journal-tools">
-              <div class="filters" role="group" aria-label="Тип операций">
-                <button class="filter active" data-filter="all" aria-pressed="true">Все</button>
-                <button class="filter" data-filter="expense" aria-pressed="false">Расходы</button>
-                <button class="filter" data-filter="income" aria-pressed="false">Доходы</button>
-              </div>
-              <label class="search-box"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Найти запись…" aria-label="Найти запись"></label>
+          <div class="journal-tools">
+            <div class="filters" role="group" aria-label="Тип операций">
+              <button class="filter active" type="button" data-filter="all" aria-pressed="true">[ все ]</button>
+              <button class="filter" type="button" data-filter="expense" aria-pressed="false">[ расходы ]</button>
+              <button class="filter" type="button" data-filter="income" aria-pressed="false">[ доходы ]</button>
             </div>
-            <div id="entries"></div>
-          </section>
-          <aside class="entry-panel">
-            <div class="section-heading"><h2><span class="accent">+</span> <span id="form-title">Новая запись</span></h2><kbd>N</kbd></div>
-            <form id="entry-form" novalidate>
-              <div class="type-switch" role="group" aria-label="Тип новой записи">
-                <button type="button" data-type="expense" class="selected" aria-pressed="true">↗ Расход</button>
-                <button type="button" data-type="income" aria-pressed="false">↙ Доход</button>
-              </div>
-              <label class="field-label" for="amount">Сумма</label>
-              <div class="amount-field"><input id="amount" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off" required maxlength="20"><span>₽</span></div>
-              <label class="field-label" for="note">Заметка <span>необязательно</span></label>
-              <input id="note" type="text" placeholder="Например, кофе по дороге" maxlength="160" autocomplete="off">
-              <label class="field-label" for="date">Дата</label>
-              <input id="date" type="date" required>
-              <div id="form-error" class="form-error" role="alert"></div>
-              <button type="submit" class="primary" id="save-button"><span>Записать расход</span><span>↵</span></button>
-              <button type="button" class="cancel-button" id="cancel-edit" hidden>Отменить изменение</button>
-              <div class="form-footnote"><span>[ ✓ ]</span> Сохраняется после нажатия</div>
-            </form>
-          </aside>
+            <label class="search-box">
+              <svg class="ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+              <input id="search" type="search" placeholder="найти запись…" aria-label="Найти запись" autocomplete="off">
+            </label>
+          </div>
+          <div id="entries"></div>
         </div>
-        <footer><span>Меньше полей. Больше ясности.</span><span><kbd>N</kbd> новая запись <span class="footer-divider">/</span> <kbd>Esc</kbd> отмена</span></footer>
-      </div>
+      </section>
     </main>
+
+    <div class="side">
+      <section class="box" aria-labelledby="balance-label">
+        <h2 class="box-label" id="balance-label">остаток</h2>
+        <div class="box-body">
+          <div class="balance-number" id="balance">0<span class="balance-decimals">,00 ₽</span></div>
+          <div class="log-lines">
+            <div class="log-line"><span class="tag ok">[ok]</span><span class="log-name">доходы</span><strong class="income" id="income-total">+0,00 ₽</strong></div>
+            <div class="log-line"><span class="tag warn">[--]</span><span class="log-name">расходы</span><strong id="expense-total">−0,00 ₽</strong></div>
+          </div>
+          <div class="muted opening-line">// начальный остаток <span id="opening-value">0 ₽</span> <button class="bracket" id="opening-button" type="button" aria-label="Изменить начальный остаток">[изменить]</button></div>
+          <div class="muted opening-line">// за всё время, без удалённых</div>
+        </div>
+      </section>
+
+      <section class="box" aria-labelledby="form-title">
+        <h2 class="box-label" id="form-title">новая запись</h2>
+        <div class="box-body">
+          <form id="entry-form" novalidate>
+            <div class="type-switch" role="group" aria-label="Тип новой записи">
+              <button type="button" data-type="expense" class="selected" aria-pressed="true">[ расход ]</button>
+              <button type="button" data-type="income" aria-pressed="false">[ доход ]</button>
+            </div>
+            <label class="field-label" for="amount">сумма</label>
+            <div class="amount-field"><input id="amount" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off" required maxlength="20"><span aria-hidden="true">₽</span></div>
+            <label class="field-label" for="note">заметка <span class="muted">// необязательно</span></label>
+            <input id="note" type="text" placeholder="Например, кофе по дороге" maxlength="160" autocomplete="off">
+            <label class="field-label" for="date">дата</label>
+            <input id="date" type="date" required>
+            <div id="form-error" class="form-error" role="alert"></div>
+            <button type="submit" class="btn primary" id="save-button"><span>Записать расход</span><span aria-hidden="true">↵</span></button>
+            <button type="button" class="btn ghost" id="cancel-edit" hidden>Отменить изменение</button>
+            <p class="muted form-hint">// <kbd>N</kbd> новая запись · <kbd>Esc</kbd> отмена</p>
+          </form>
+        </div>
+      </section>
+    </div>
   </div>
-  <div id="toast" class="toast" role="status" hidden><span id="toast-message"></span><button id="undo-button" hidden>Вернуть</button><button id="toast-close" aria-label="Закрыть уведомление">×</button></div>
-  <dialog id="opening-dialog">
+
+  <div id="toast" class="toast" role="status" hidden><span class="toast-text" id="toast-message"></span><button id="undo-button" class="bracket accent-hover" type="button" hidden>[вернуть]</button><button id="toast-close" class="bracket" type="button" aria-label="Закрыть уведомление">[×]</button></div>
+
+  <dialog id="opening-dialog" aria-labelledby="opening-title">
     <form id="opening-form" novalidate>
-      <div class="dialog-heading"><h2>Начальный остаток</h2><button type="button" data-close="opening-dialog" class="icon-button" aria-label="Закрыть">×</button></div>
-      <p>Сколько денег было до первой записи? Эта сумма учитывается в остатке, но не в доходах.</p>
-      <label class="field-label" for="opening-input">Сумма в рублях</label>
-      <input id="opening-input" inputmode="decimal" type="text" placeholder="0,00" maxlength="21">
-      <div id="opening-error" class="form-error" role="alert"></div>
-      <button class="primary" type="submit">Сохранить остаток <span>↵</span></button>
+      <h2 class="box-label" id="opening-title">начальный остаток</h2>
+      <button type="button" data-close="opening-dialog" class="bracket dialog-close" aria-label="Закрыть">[×]</button>
+      <div class="dialog-body">
+        <p class="muted">// сколько денег было до первой записи? Сумма учитывается в остатке, но не в доходах.</p>
+        <label class="field-label" for="opening-input">сумма в рублях</label>
+        <input id="opening-input" inputmode="decimal" type="text" placeholder="0,00" maxlength="21" autocomplete="off">
+        <div id="opening-error" class="form-error" role="alert"></div>
+        <button class="btn primary" type="submit"><span>Сохранить остаток</span><span aria-hidden="true">↵</span></button>
+      </div>
     </form>
   </dialog>
-  <dialog id="import-dialog">
-    <div class="dialog-heading"><h2>Восстановить копию</h2><button type="button" data-close="import-dialog" class="icon-button" aria-label="Закрыть">×</button></div>
-    <p id="import-description"></p>
-    <p>Совпадающие записи будут пропущены. Текущий начальный остаток сохранится, если в журнале уже есть данные.</p>
-    <div id="import-error" class="form-error" role="alert"></div>
-    <button class="primary" id="confirm-import">Добавить записи из копии <span>↑</span></button>
+
+  <dialog id="import-dialog" aria-labelledby="import-title">
+    <h2 class="box-label" id="import-title">восстановить копию</h2>
+    <button type="button" data-close="import-dialog" class="bracket dialog-close" aria-label="Закрыть">[×]</button>
+    <div class="dialog-body">
+      <p id="import-description"></p>
+      <p class="muted">// совпадающие записи будут пропущены. Текущий начальный остаток сохранится, если в журнале уже есть данные.</p>
+      <div id="import-error" class="form-error" role="alert"></div>
+      <button class="btn primary" id="confirm-import" type="button"><span>Добавить записи из копии</span><span aria-hidden="true">↑</span></button>
+    </div>
   </dialog>
   <noscript><div class="error-banner">Для работы журнала включите JavaScript в браузере.</div></noscript>
 </body>
