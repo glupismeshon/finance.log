@@ -81,7 +81,7 @@ export function cookie(name, value, {maxAge, path = "/"} = {}) {
 
 // CSRF: для POST/DELETE нужны X-Requested-With и Origin = APP_ORIGIN.
 export function csrfOk(request, appOrigin) {
-  if (request.method !== "POST" && request.method !== "DELETE") return true;
+  if (request.method !== "POST" && request.method !== "DELETE" && request.method !== "PATCH") return true;
   if (request.headers.get("x-requested-with") !== CSRF_HEADER) return false;
   const origin = request.headers.get("origin");
   return !!origin && !!appOrigin && origin === appOrigin;
@@ -160,4 +160,27 @@ export function validateChange(c) {
   const json = JSON.stringify(c.data);
   if (new TextEncoder().encode(json).length > SYNC_LIMITS.dataBytes) return {ok: false, error: "too_large"};
   return {ok: true, change: {kind: c.kind, id: c.id, updatedAt, deleted: c.deleted, enc, json}};
+}
+
+// ---- Ник (handle) ----
+export const HANDLE_RE = /^[a-z0-9_-]{3,24}$/;
+export const HANDLE_RESERVED = ["admin", "root", "api", "support", "finance", "financelog", "system"];
+export const validHandle = h => typeof h === "string" && HANDLE_RE.test(h) && !HANDLE_RESERVED.includes(h);
+
+// Нормализация произвольной строки: нижний регистр, недопустимое → «-», не длиннее 24. Результат может быть коротким/пустым.
+export function normalizeHandle(s) {
+  return String(s ?? "").toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24).replace(/-+$/, "");
+}
+// Предлагаемый ник: Telegram username → часть email до @ → user-<6 символов id>. Всегда подходит под формат (без учёта занятости).
+export function suggestHandle({username, email, id} = {}) {
+  const cands = [username, email && String(email).replace(/^@/, "").split("@")[0]];
+  for (const c of cands) { const h = normalizeHandle(c); if (validHandle(h)) return h; }
+  const tail = String(id ?? "").replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 6);
+  return "user-" + (tail.length === 6 ? tail : (tail + Math.random().toString(36).slice(2, 8)).slice(0, 6));
+}
+// n-й вариант ника при занятости: base, base-2, base-3 … (база укорачивается, чтобы влезть в 24).
+export function handleVariant(base, n) {
+  if (n <= 1) return base;
+  const suf = "-" + n;
+  return base.slice(0, 24 - suf.length).replace(/-+$/, "") + suf;
 }

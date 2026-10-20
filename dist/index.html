@@ -35,7 +35,7 @@
   <header class="topbar">
     <a class="brand" href="./" aria-label="finance.log">
       <span class="brand-icon" aria-hidden="true"><span class="bi-br">[//</span>$<span class="bi-br">]</span></span>
-      <span class="brand-name">finance.log</span><span class="cursor" aria-hidden="true">▊</span>
+      <span class="brand-text" id="brand-text" aria-hidden="true"><span id="brand-name">finance.log</span><span id="brand-handle" class="muted"></span><span class="cursor" id="brand-cursor">▊</span><span id="brand-dd" class="muted"></span></span>
     </a>
     <span class="crumb muted"><span aria-hidden="true">~/</span><span id="page-label"></span></span>
     <div class="topbar-right">
@@ -257,6 +257,12 @@
           <h2 class="box-label" id="settings-hints-label" data-i18n="settings.hints"></h2>
           <div class="box-body">
             <button class="theme-row selected" id="hints-toggle" type="button" role="checkbox" aria-checked="true"><span class="theme-check" aria-hidden="true">[✓]</span><span class="theme-name" data-i18n="settings.hintsOn"></span></button>
+          </div>
+        </section>
+        <section class="box" aria-labelledby="settings-anim-label">
+          <h2 class="box-label" id="settings-anim-label" data-i18n="settings.anim"></h2>
+          <div class="box-body">
+            <button class="theme-row selected" id="anim-toggle" type="button" role="checkbox" aria-checked="true"><span class="theme-check" aria-hidden="true">[✓]</span><span class="theme-name" data-i18n="settings.animOn"></span></button>
           </div>
         </section>
         <section class="box" aria-labelledby="settings-theme-label">

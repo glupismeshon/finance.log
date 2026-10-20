@@ -24,6 +24,8 @@ export default {
         if (p === "/api/sync") return await syncApi.sync(env, request);
         if (p === "/api/auth/logout") return await auth.logout(env, request, false);
         if (p === "/api/auth/logout-all") return await auth.logout(env, request, true);
+      } else if (m === "PATCH") {
+        if (p === "/api/me") return await auth.patchMe(env, request);
       } else if (m === "DELETE") {
         if (p === "/api/me/data") return await syncApi.deleteData(env, request);
         const mm = /^\/api\/me\/identities\/([a-z]+)$/.exec(p);

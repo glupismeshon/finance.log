@@ -1,4 +1,4 @@
-import {hashSession, SESSION_TTL} from "./util.js";
+import {hashSession, SESSION_TTL, suggestHandle, handleVariant, validHandle} from "./util.js";
 
 const now = () => Math.floor(Date.now() / 1000);
 
@@ -6,13 +6,13 @@ export async function sessionUser(env, token) {
   if (!token) return null;
   const idHash = await hashSession(token);
   const row = await env.DB.prepare(
-    "SELECT s.id_hash, s.user_id, s.last_seen, u.name, u.avatar FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id_hash = ? AND s.expires_at > ?"
+    "SELECT s.id_hash, s.user_id, s.last_seen, u.name, u.avatar, u.handle FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id_hash = ? AND s.expires_at > ?"
   ).bind(idHash, now()).first();
   if (!row) return null;
   if (now() - row.last_seen >= 3600) {
     await env.DB.prepare("UPDATE sessions SET last_seen = ? WHERE id_hash = ?").bind(now(), idHash).run();
   }
-  return {idHash, userId: row.user_id, name: row.name, avatar: row.avatar};
+  return {idHash, userId: row.user_id, name: row.name, avatar: row.avatar, handle: row.handle};
 }
 
 export async function createSession(env, userId, token, userAgent) {
@@ -30,14 +30,64 @@ export const deleteUserSessions = (env, userId) => env.DB.prepare("DELETE FROM s
 export const findIdentity = (env, provider, providerId) =>
   env.DB.prepare("SELECT user_id FROM identities WHERE provider = ? AND provider_id = ?").bind(provider, providerId).first();
 
-export async function createUserWithIdentity(env, {provider, providerId, email, name, avatar}) {
+const isUnique = e => /UNIQUE|constraint/i.test(String(e && (e.message || e)));
+const handleTaken = async (env, h) => !!(await env.DB.prepare("SELECT 1 AS x FROM users WHERE handle = ?").bind(h).first());
+
+// Свободный ник: base, base-2, base-3 …; окончательно защищает уникальный индекс (гонка → следующий вариант).
+async function freeHandle(env, base, from = 1) {
+  for (let n = from; n < from + 200; n++) {
+    const h = handleVariant(base, n);
+    if (validHandle(h) && !(await handleTaken(env, h))) return {h, n};
+  }
+  return {h: "user-" + crypto.randomUUID().slice(0, 6), n: from + 200};
+}
+
+export async function createUserWithIdentity(env, {provider, providerId, email, name, avatar, username}) {
   const id = crypto.randomUUID(), t = now();
-  await env.DB.batch([
-    env.DB.prepare("INSERT INTO users (id, name, avatar, created_at) VALUES (?, ?, ?, ?)").bind(id, name || null, avatar || null, t),
-    env.DB.prepare("INSERT INTO identities (provider, provider_id, user_id, email, name, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-      .bind(provider, providerId, id, email || null, name || null, t)
-  ]);
-  return id;
+  const base = suggestHandle({username, email: provider === "google" ? email : null, id});
+  let from = 1;
+  for (let attempt = 0; ; attempt++) {
+    const {h, n} = await freeHandle(env, base, from);
+    try {
+      await env.DB.batch([
+        env.DB.prepare("INSERT INTO users (id, name, avatar, created_at, handle) VALUES (?, ?, ?, ?, ?)").bind(id, name || null, avatar || null, t, h),
+        env.DB.prepare("INSERT INTO identities (provider, provider_id, user_id, email, name, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+          .bind(provider, providerId, id, email || null, name || null, t)
+      ]);
+      return id;
+    } catch (e) {
+      if (!isUnique(e) || attempt >= 5) throw e;
+      from = n + 1;
+    }
+  }
+}
+
+// Старому пользователю без ника назначаем автоматический (по Telegram username / email / id).
+export async function ensureHandle(env, userId) {
+  const row = await env.DB.prepare("SELECT handle FROM users WHERE id = ?").bind(userId).first();
+  if (!row) return null;
+  if (row.handle) return row.handle;
+  const ids = (await env.DB.prepare("SELECT provider, email FROM identities WHERE user_id = ? ORDER BY created_at").bind(userId).all()).results || [];
+  const tg = ids.find(i => i.provider === "telegram"), g = ids.find(i => i.provider === "google");
+  const base = suggestHandle({username: tg && tg.email, email: g && g.email, id: userId});
+  let from = 1;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const {h, n} = await freeHandle(env, base, from);
+    try {
+      const r = await env.DB.prepare("UPDATE users SET handle = ? WHERE id = ? AND handle IS NULL").bind(h, userId).run();
+      if (r.meta && r.meta.changes) return h;
+      return (await env.DB.prepare("SELECT handle FROM users WHERE id = ?").bind(userId).first()).handle;
+    } catch (e) { if (!isUnique(e)) throw e; from = n + 1; }
+  }
+  return null;
+}
+
+// 'ok' | 'taken'
+export async function setHandle(env, userId, handle) {
+  try {
+    await env.DB.prepare("UPDATE users SET handle = ? WHERE id = ?").bind(handle, userId).run();
+    return "ok";
+  } catch (e) { if (isUnique(e)) return "taken"; throw e; }
 }
 
 export async function attachIdentity(env, userId, {provider, providerId, email, name, avatar}) {

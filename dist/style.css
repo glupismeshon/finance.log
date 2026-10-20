@@ -47,10 +47,15 @@ svg.ico { flex: none; color: var(--muted); }
   font-size: 9.5px; font-weight: 700; letter-spacing: -0.5px; color: var(--accent);
 }
 .brand-icon .bi-br { color: var(--muted); }
+.brand { min-width: 0; flex: 0 1 auto; }
+.brand-text { position: relative; min-width: 15ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brand-text .muted { font-weight: 400; }
+#brand-dd { position: absolute; right: 0; top: 50%; transform: translateY(-50%); padding-left: 8px; background: var(--bg); }
 .cursor { color: var(--accent); margin-left: -4px; animation: blink 1.1s steps(1) infinite; }
+.cursor.solid { animation: none; }
 @keyframes blink { 50% { opacity: 0; } }
-.crumb { white-space: nowrap; }
-.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 16px; }
+.crumb { white-space: nowrap; flex: 0 0 auto; }
+.topbar-right { margin-left: auto; flex: 0 0 auto; display: flex; align-items: center; gap: 16px; }
 .topbar-right time { white-space: nowrap; }
 
 /* ---------- Мелкие текстовые кнопки в скобках ---------- */
@@ -662,7 +667,7 @@ button.an-row:hover .an-name, button.an-row:focus-visible .an-name { color: var(
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .cursor { animation: none; }
+  .cursor, .cursor.solid { animation: none; }
   * { scroll-behavior: auto !important; }
 }
 
@@ -674,6 +679,10 @@ button.an-row:hover .an-name, button.an-row:focus-visible .an-name { color: var(
 .auth-line.warn { color: var(--warn); }
 .auth-user { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; font-weight: 600; }
 .auth-avatar { width: 24px; height: 24px; border-radius: 4px; object-fit: cover; border: 1px solid var(--border); }
+.auth-handle { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; margin: 0 0 10px; }
+.auth-handle input { width: 22ch; max-width: 100%; }
+.auth-handle .bracket { min-height: 0; }
+@media (max-width: 599px) { .auth-handle .bracket { min-height: 44px; padding: 0 2px; } }
 .auth-actions { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 4px; }
 .auth-actions .bracket { text-decoration: none; display: inline-flex; align-items: center; }
 @media (max-width: 599px) { .auth-actions .bracket { min-height: 44px; padding: 0 2px; } }

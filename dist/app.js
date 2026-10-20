@@ -1394,7 +1394,113 @@
       rows.push(actions);
     }
   }
+  // ---- ник в аккаунте ----
+  let handleEditing = false, handleDraft = "", handleError = "", handleBusy = false, handleEl = null;
+  const HANDLE_OK = /^[a-z0-9_-]{3,24}$/, HANDLE_BAD = ["admin", "root", "api", "support", "finance", "financelog", "system"];
+  async function saveHandle() {
+    const h = handleDraft.trim().toLowerCase();
+    if (!HANDLE_OK.test(h) || HANDLE_BAD.includes(h)) { handleError = t("auth.handleErr.bad"); renderAccount(); return; }
+    if (h === auth.me.user.handle) { handleEditing = false; handleError = ""; renderAccount(); return; }
+    handleBusy = true;
+    try {
+      const r = await authFetch("/api/me", {method: "PATCH", headers: {"Content-Type": "application/json"}, body: JSON.stringify({handle: h})});
+      if (r.ok) { auth.me.user.handle = h; handleEditing = false; handleError = ""; }
+      else handleError = t(r.status === 409 ? "auth.handleErr.taken" : r.status === 400 ? "auth.handleErr.bad" : "auth.handleErr.other");
+    } catch { handleError = t("auth.handleErr.other"); }
+    handleBusy = false;
+    renderAccount();
+  }
+  function handleRow(me) {
+    const key = [me.user.handle, handleEditing, handleError, handleBusy, I.getLang()].join("|");
+    if (handleEl && handleEl.dataset.key === key) return handleEl;
+    const wrap = node("div", "auth-handle"); wrap.dataset.key = key;
+    if (!handleEditing) {
+      wrap.append(node("span", "muted", t("auth.handle", {handle: me.user.handle || "…"})));
+      wrap.append(authButton("auth.handleEdit", () => { handleEditing = true; handleDraft = me.user.handle || ""; handleError = ""; renderAccount(); }));
+    } else {
+      wrap.append(node("span", "muted", "-- " + t("auth.handleLabel") + ": @"));
+      const inp = node("input"); inp.type = "text"; inp.maxLength = 24; inp.value = handleDraft; inp.autocomplete = "off"; inp.spellcheck = false;
+      inp.setAttribute("autocapitalize", "off"); inp.setAttribute("aria-label", t("auth.handleLabel")); inp.disabled = handleBusy;
+      inp.addEventListener("input", () => { handleDraft = inp.value.toLowerCase(); });
+      inp.addEventListener("keydown", e => {
+        if (e.key === "Enter") { e.preventDefault(); saveHandle(); }
+        else if (e.key === "Escape") { handleEditing = false; handleError = ""; renderAccount(); }
+      });
+      wrap.append(inp);
+      const save = authButton("auth.handleSave", saveHandle); save.disabled = handleBusy;
+      wrap.append(save, authButton("auth.handleCancel", () => { handleEditing = false; handleError = ""; renderAccount(); }));
+      if (handleError) { const e = node("div", "auth-line warn", handleError); e.style.flexBasis = "100%"; e.setAttribute("role", "alert"); wrap.append(e); }
+      setTimeout(() => { if (wrap.isConnected && !handleBusy) { inp.focus(); const n = inp.value.length; try { inp.setSelectionRange(n, n); } catch {} } }, 0);
+    }
+    handleEl = wrap;
+    return wrap;
+  }
+  // ---- анимация заголовка (nvim) ----
+  let animRun = 0, animating = false, animStarted = false;
+  const bEl = {name: $("brand-name"), handle: $("brand-handle"), dd: $("brand-dd"), cursor: $("brand-cursor"), text: $("brand-text")};
+  const reduceMotion = () => { try { return matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return false; } };
+  const animOn = () => settings.titleAnim !== false;
+  const brandHandle = () => (auth.state === "in" && auth.me && auth.me.user.handle) || "";
+  function brandFinal() {
+    const h = brandHandle();
+    bEl.dd.textContent = ""; bEl.cursor.classList.remove("solid");
+    bEl.name.textContent = "finance.log"; bEl.handle.textContent = h ? "@" + h : "";
+    // на узком экране finance.log@ник → fl@ник, если не помещается
+    if (h && bEl.text.scrollWidth > bEl.text.clientWidth + 1) bEl.name.textContent = "fl";
+  }
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  async function playBrand() {
+    const id = ++animRun, alive = () => id === animRun;
+    animStarted = true;
+    if (reduceMotion() || !animOn()) { animating = false; brandFinal(); return; }
+    animating = true;
+    const solid = on => bEl.cursor.classList.toggle("solid", on);
+    const dd = async () => {
+      bEl.dd.textContent = "dd"; await wait(350); if (!alive()) return;
+      bEl.name.textContent = ""; bEl.handle.textContent = ""; bEl.dd.textContent = "";
+    };
+    const type = async (str, el, tail) => {
+      solid(true);
+      for (const ch of Array.from(str)) {
+        if (!alive()) return;
+        el.textContent += ch;
+        await wait(55 + Math.random() * 20);
+      }
+      if (tail !== false) solid(false);
+    };
+    bEl.name.textContent = "finance.log"; bEl.handle.textContent = ""; bEl.dd.textContent = ""; solid(false);
+    await wait(2200); if (!alive()) return;          // два мигания курсора
+    for (const [key, pause] of [["brand.p1", 1200], ["brand.p2", 1000]]) {
+      await dd(); if (!alive()) return;
+      await type(t(key), bEl.name); if (!alive()) return;
+      await wait(pause); if (!alive()) return;
+    }
+    await dd(); if (!alive()) return;
+    for (let w = 0; auth.state === "loading" && w < 3000; w += 100) { await wait(100); if (!alive()) return; }
+    await type("finance.log", bEl.name, false); if (!alive()) return;
+    const h = brandHandle();
+    if (h) await type("@" + h, bEl.handle, false);
+    if (!alive()) return;
+    animating = false; brandFinal();
+  }
+  function applyAnim() {
+    const a = $("anim-toggle");
+    a.setAttribute("aria-checked", String(animOn()));
+    a.classList.toggle("selected", animOn());
+  }
+  $("anim-toggle").addEventListener("click", () => {
+    persistNotice(boot.set({titleAnim: !animOn()}));
+    settings = boot.get(); applyAnim();
+    if (animOn()) playBrand(); else { animRun++; animating = false; brandFinal(); }
+  });
+  $("brand-text").closest("a").addEventListener("click", e => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button) return;
+    if (!animOn() || reduceMotion()) return;
+    e.preventDefault(); playBrand();
+  });
+  window.addEventListener("resize", () => { if (!animating) brandFinal(); });
   function renderAccount() {
+    if (!animating && animStarted) brandFinal();
     renderIndicator();
     renderNotes();
     const box = $("auth-box");
@@ -1416,6 +1522,7 @@
       const display = me.user.name || (byProvider.google && byProvider.google.email) || (byProvider.telegram && byProvider.telegram.email) || "—";
       head.append(avatarEl(display, me.user.avatar), node("span", "", display));
       rows.push(head);
+      rows.push(handleRow(me));
       const g = byProvider.google, tg = byProvider.telegram, none = t("auth.none");
       rows.push(node("p", "muted auth-line", t("auth.providers", {google: g ? (g.email || g.name || "✓") : none, telegram: tg ? (tg.email || tg.name || "✓") : none})));
       syncBox(rows, me);
@@ -1426,7 +1533,9 @@
       actions.append(authButton("auth.logoutAll", () => { syncReset(); authPost("/api/auth/logout-all"); }));
       rows.push(actions);
     }
+    const hadFocus = handleEl && handleEl.contains(document.activeElement) ? handleEl.querySelector("input") : null;
     box.replaceChildren(...rows);
+    if (hadFocus) hadFocus.focus();
   }
   $("sync-indicator").addEventListener("click", () => {
     const st = syncStatus();
@@ -1738,10 +1847,12 @@
   window.addEventListener("storage",event=>{
     if(event.key!==boot.KEY)return;
     settings=boot.get();
-    if(I.resolve(settings.lang)!==I.getLang())applyLanguage();else { renderSettings(); syncPrivacy(); applyHints(); }
+    if(I.resolve(settings.lang)!==I.getLang())applyLanguage();else { renderSettings(); syncPrivacy(); applyHints(); applyAnim(); }
   });
   handleAuthReturn();
   applyLanguage();
+  applyAnim();
+  playBrand();
   loadAccount();
   if (location.hash === "#settings") setTab("settings");
   resetForm();

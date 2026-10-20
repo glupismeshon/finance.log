@@ -99,3 +99,34 @@ test("sync validateChange: kind, id, время, размер", async () => {
   assert.equal(U.validateChange({...ok, data: {s: "x".repeat(70000)}}).error, "too_large");
   assert.equal(U.validateChange({...ok, enc: 1, data: "cipher"}).change.enc, 1);
 });
+
+test("ник: формат и запрещённые", async () => {
+  const U = await load();
+  for (const ok of ["abc", "a_b-c", "user-1a2b3c", "x".repeat(24)]) assert.equal(U.validHandle(ok), true, ok);
+  for (const bad of ["ab", "x".repeat(25), "Abc", "a b", "a@b", "", null, 5, "admin", "root", "api", "support", "finance", "financelog", "system"]) assert.equal(U.validHandle(bad), false, String(bad));
+});
+test("ник: нормализация", async () => {
+  const U = await load();
+  assert.equal(U.normalizeHandle("Glupi.Smeshon"), "glupi-smeshon");
+  assert.equal(U.normalizeHandle("@Ann"), "ann");
+  assert.equal(U.normalizeHandle("x".repeat(40)).length, 24);
+  assert.equal(U.normalizeHandle(null), "");
+});
+test("ник: предложение (telegram → email → user-id) и варианты при занятости", async () => {
+  const U = await load();
+  assert.equal(U.suggestHandle({username: "Ann_B", email: "z@x.io", id: "abc"}), "ann_b");
+  assert.equal(U.suggestHandle({email: "John.Doe@gmail.com", id: "abc"}), "john-doe");
+  assert.match(U.suggestHandle({username: "ab"}), /^user-[a-z0-9]{6}$/);
+  assert.match(U.suggestHandle({id: "1a2b3c4d-0000"}), /^user-1a2b3c$/);
+  assert.equal(U.suggestHandle({username: "admin", id: "ffeedd99"}), "user-ffeedd");
+  assert.equal(U.handleVariant("ann", 1), "ann");
+  assert.equal(U.handleVariant("ann", 3), "ann-3");
+  const long = U.handleVariant("x".repeat(24), 12);
+  assert.equal(long.length, 24); assert.ok(long.endsWith("-12")); assert.equal(U.validHandle(long), true);
+});
+test("CSRF: PATCH тоже защищён", async () => {
+  const U = await load(), O = "https://a.test";
+  const mk = (h) => ({method: "PATCH", headers: {get: k => h[k.toLowerCase()] ?? null}});
+  assert.equal(U.csrfOk(mk({}), O), false);
+  assert.equal(U.csrfOk(mk({"x-requested-with": "finance.log", origin: O}), O), true);
+});
