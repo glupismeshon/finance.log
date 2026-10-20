@@ -47,6 +47,48 @@
     }
     return {cats, byId};
   }
+  const UNITS = ["pcs", "kg", "g", "l", "ml", "pack"];
+  const ITEM_KINDS = ["item", "discount", "fee"];
+  const MAX_ITEMS = 200;
+  const byCat = (a, b) => a.categoryId === b.categoryId ? 0 : a.categoryId === null ? 1 : b.categoryId === null ? -1 : a.categoryId < b.categoryId ? -1 : 1;
+  // allocations из позиций чека: группы по категории, скидка пропорционально (наибольший остаток), fee — в fallback
+  function allocationsFromItems(items, fallbackCategoryId = null) {
+    const fb = fallbackCategoryId === undefined ? null : fallbackCategoryId;
+    const groups = new Map();
+    let discount = 0, fee = 0;
+    for (const it of items) {
+      if (it.kind === "discount") discount += it.amountCents;
+      else if (it.kind === "fee") fee += it.amountCents;
+      else { const k = it.categoryId == null ? fb : it.categoryId; groups.set(k, (groups.get(k) || 0) + it.amountCents); }
+    }
+    const list = [...groups].map(([categoryId, amountCents], i) => ({categoryId, amountCents, i}));
+    const total = list.reduce((s, g) => s + g.amountCents, 0);
+    if (discount > total) throw new Error(BAD_OPS);
+    if (discount > 0) {
+      const D = BigInt(discount), T = BigInt(total);
+      let left = discount;
+      for (const g of list) { const n = BigInt(g.amountCents) * D; g.share = Number(n / T); g.rem = n % T; left -= g.share; }
+      [...list].sort((a, b) => a.rem === b.rem ? a.i - b.i : a.rem > b.rem ? -1 : 1).slice(0, left).forEach(g => g.share++);
+      for (const g of list) g.amountCents -= g.share;
+    }
+    if (fee > 0) { const g = list.find(x => x.categoryId === fb); if (g) g.amountCents += fee; else list.push({categoryId: fb, amountCents: fee, i: list.length}); }
+    return list.filter(g => g.amountCents > 0).map(g => ({categoryId: g.categoryId, amountCents: g.amountCents})).sort(byCat);
+  }
+  function normItems(items, catById, bad) {
+    if (!Array.isArray(items) || !items.length || items.length > MAX_ITEMS) bad();
+    const ids = new Set();
+    return items.map(it => {
+      if (!plain(it) || typeof it.id !== "string" || !it.id || it.id.length > 100 || ids.has(it.id) || !ITEM_KINDS.includes(it.kind) ||
+        typeof it.name !== "string" || it.name.length > 80 || !Number.isSafeInteger(it.qtyMilli) || it.qtyMilli <= 0 || !UNITS.includes(it.unit) ||
+        !cents(it.amountCents) || it.amountCents <= 0 || !(it.categoryId == null || typeof it.categoryId === "string")) bad();
+      ids.add(it.id);
+      const item = it.kind === "item";
+      if (item && !it.name.trim()) bad();
+      if (!item && (it.qtyMilli !== 1000 || it.unit !== "pcs")) bad();
+      if (item && it.categoryId != null) { const c = catById.get(it.categoryId); if (!c || c.kind !== "expense") bad(); }
+      return {id: it.id, kind: it.kind, name: it.name, qtyMilli: it.qtyMilli, unit: it.unit, amountCents: it.amountCents, categoryId: item && it.categoryId != null ? it.categoryId : null};
+    });
+  }
   function normOp(o, accountIds, nested, catById) {
     const bad = () => { throw new Error(BAD_OPS); };
     if (!plain(o) || typeof o.id !== "string" || !ID.test(o.id) || !OP_TYPES.includes(o.type) || !validDate(o.date) ||
@@ -72,6 +114,21 @@
     if (o.type === "expense") { if (allocations.length && allocations.reduce((s, a) => s + a.amountCents, 0) !== -legs[0].amountCents) bad(); }
     else if (o.type === "income") { if (allocations.length && allocations.reduce((s, a) => s + a.amountCents, 0) !== legs[0].amountCents) bad(); }
     else if (allocations.length) bad();
+    let items;
+    if (o.items !== undefined) {
+      if (o.type !== "expense") bad();
+      items = normItems(o.items, catById, bad);
+      const sum = items.reduce((t, i) => t + (i.kind === "discount" ? -i.amountCents : i.amountCents), 0);
+      if (sum !== -legs[0].amountCents) bad();
+      // fallback-категория покупки в операции не хранится: это null или одна из категорий allocations
+      const same = (x, y) => x.length === y.length && x.every((a, i) => a.categoryId === y[i].categoryId && a.amountCents === y[i].amountCents);
+      const sorted = [...allocations].sort(byCat);
+      let ok = false;
+      for (const fb of new Set([null, ...allocations.map(a => a.categoryId)])) {
+        try { if (same(allocationsFromItems(items, fb), sorted)) { ok = true; break; } } catch (e) { bad(); }
+      }
+      if (!ok) bad();
+    }
     let merchant;
     if (o.merchant !== undefined) {
       if (o.type !== "income" && o.type !== "expense") bad();
@@ -82,6 +139,7 @@
     }
     const op = {id: o.id, type: o.type, date: o.date, note: o.note, createdAt: o.createdAt, updatedAt: o.updatedAt, deleted: o.deleted, legs, allocations, links: o.type === "expense" && typeof o.links.feeOf === "string" && ID.test(o.links.feeOf) ? {feeOf: o.links.feeOf} : {}};
     if (merchant) op.merchant = merchant;
+    if (items) op.items = items;
     if (!nested) op.revisions = o.revisions.map(r => {
       if (!plain(r) || !isoOk(r.at)) bad();
       return {at: r.at, before: normOp(r.before, accountIds, true, catById)};
@@ -166,7 +224,7 @@
     }
     throw new Error(FORMAT);
   }
-  const api = {OP_TYPES, KINDS, DEFAULT_CATEGORIES, defaultCategories, empty, validate, migrate};
+  const api = {OP_TYPES, KINDS, UNITS, ITEM_KINDS, allocationsFromItems, DEFAULT_CATEGORIES, defaultCategories, empty, validate, migrate};
   if (node) module.exports = api;
   else (root.MoneyCore = root.MoneyCore || {}).schema = api;
 })(globalThis);

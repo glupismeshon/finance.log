@@ -49,7 +49,34 @@
     }
     return [...cnt].sort((a, b) => b[1] - a[1]).slice(0, limit).map(x => x[0]);
   }
-  const api = {merchantKey, merchants, forMerchant, recentCategories};
+  const itemKey = merchantKey;
+  // цена за единицу: за 1 шт/уп/кг/л; для г и мл — пересчёт на кг/л
+  const unitPriceCents = it => Math.round(it.amountCents * (it.unit === "g" || it.unit === "ml" ? 1e6 : 1000) / it.qtyMilli);
+  function items(state, merchant, prefix, limit = 8) {
+    const mk = merchant == null ? null : merchantKey(merchant);
+    const p = itemKey(prefix);
+    const map = new Map();
+    state.operations.forEach((o, i) => {
+      if (o.deleted || o.type !== "expense" || !o.items) return;
+      const own = mk !== null && merchantKey(o.merchant) === mk;
+      for (const it of o.items) {
+        if (it.kind !== "item") continue;
+        const k = itemKey(it.name);
+        if (!k) continue;
+        let g = map.get(k);
+        if (!g) map.set(k, g = {key: k, count: 0, ownCount: 0, last: null});
+        g.count++;
+        if (own) g.ownCount++;
+        const e = {o, i, it};
+        if (!g.last || newer(e, g.last)) g.last = e;
+      }
+    });
+    return [...map.values()]
+      .filter(g => !p || g.key.split(" ").some(w => w.startsWith(p)) || g.key.startsWith(p))
+      .sort((a, b) => (b.ownCount > 0) - (a.ownCount > 0) || (b.ownCount - a.ownCount) || b.count - a.count || (a.last.o.date < b.last.o.date ? 1 : a.last.o.date > b.last.o.date ? -1 : 0) || (a.key < b.key ? -1 : 1))
+      .slice(0, limit).map(g => { const it = g.last.it; return {name: it.name, unit: it.unit, lastAmountCents: it.amountCents, lastQtyMilli: it.qtyMilli, lastUnitPriceCents: unitPriceCents(it), categoryId: it.categoryId, count: g.count}; });
+  }
+  const api = {merchantKey, itemKey, unitPriceCents, items, merchants, forMerchant, recentCategories};
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else (root.MoneyCore = root.MoneyCore || {}).suggest = api;
 })(globalThis);

@@ -1,7 +1,7 @@
 (function (root) {
   "use strict";
   const node = typeof module !== "undefined" && module.exports;
-  const {validate, migrate} = node ? require("./schema.js") : root.MoneyCore.schema;
+  const {validate, migrate, allocationsFromItems} = node ? require("./schema.js") : root.MoneyCore.schema;
   const MAX_REVISIONS = 20;
   const ARCHIVED = "Счёт в архиве.";
   const baseOp = (id, type, date, note, now, legs, allocations, links) => ({id, type, date, note: note || "", createdAt: now, updatedAt: now, deleted: false, legs, allocations, links, revisions: []});
@@ -28,7 +28,7 @@
     return {state: upsertOperation(state, adj, now), diff};
   }
   const canon = v => JSON.stringify(v, (k, x) => x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) : x);
-  const content = o => canon({type: o.type, date: o.date, note: o.note, deleted: o.deleted, legs: o.legs, allocations: o.allocations, links: o.links, merchant: o.merchant || null});
+  const content = o => canon({type: o.type, date: o.date, note: o.note, deleted: o.deleted, legs: o.legs, allocations: o.allocations, links: o.links, merchant: o.merchant || null, items: o.items || null});
   function upsertOperation(state, op, nowISO) {
     const index = state.operations.findIndex(o => o.id === op.id);
     const put = o => ({...state, operations: index < 0 ? [...state.operations, o] : state.operations.map((x, i) => i === index ? o : x)});
@@ -64,7 +64,7 @@
     if (!state.accounts.some(a => a.id === accountId)) throw new Error("Счёт не найден.");
     return validate({...state, accounts: state.accounts.map(a => a.id === accountId ? {...a, openingCents: cents} : a)});
   }
-  const api = {upsertOperation, setDeleted, merge, setOpening, makeTransfer, makeFee, reconcile};
+  const api = {upsertOperation, setDeleted, merge, setOpening, makeTransfer, makeFee, reconcile, allocationsFromItems};
   if (node) module.exports = api;
   else (root.MoneyCore = root.MoneyCore || {}).journal = api;
 })(globalThis);
