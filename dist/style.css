@@ -835,3 +835,10 @@ svg .pl-ln.neg { stroke: var(--over); }
   .pl-meta { row-gap: 0; }
   .pl-meta .bracket { margin: -6px 0; }
 }
+
+/* Safari (iOS 26) в режиме браузера: fixed-шапка уезжает под строку статуса и размывается.
+   В браузере на телефоне шапка обычная (уезжает при прокрутке), в standalone-приложении — закреплённая. */
+@media (display-mode: browser) and (max-width: 599px) {
+  body { padding-top: 0; }
+  .topbar { position: relative; height: auto; min-height: var(--topbar-h); padding-top: 0; }
+}

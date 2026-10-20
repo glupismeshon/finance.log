@@ -1,5 +1,5 @@
 "use strict";
-const CACHE = "finance-log-v32";
+const CACHE = "finance-log-v33";
 const ASSETS = [
   "./",
   "index.html",
@@ -26,7 +26,9 @@ const ASSETS = [
   "manifest.webmanifest",
   "apple-touch-icon.png",
   "icon-192.png",
-  "icon-512.png"
+  "icon-512.png",
+  "icon-maskable-512.png",
+  "favicon.ico"
 ];
 
 self.addEventListener("install", event => {
