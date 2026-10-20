@@ -342,11 +342,16 @@ body[data-tab="accounts"][data-account] #screen-account { display: block; }
 .acc-group:first-child { margin-top: 0; }
 .acc-group .acc-bal { color: var(--muted); }
 .over, .acc-bal.over, .log-line strong.over { color: var(--over); }
-.bal-views { margin-bottom: 6px; }
-.bal-views { flex-wrap: wrap; }
+.balance-label::before { content: none; }
+.balance-toggle { border: 0; background: none; padding: 0; color: inherit; font: inherit; line-height: inherit; touch-action: manipulation; position: relative; }
+.balance-toggle::before { content: "$ "; }
+.balance-toggle::after { content: ""; position: absolute; inset: -12px -7px; }
+.balance-toggle:hover { color: var(--text); }
+.balance-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 2px; }
+#balance-view { color: var(--muted); }
 .login-warn { margin: 6px 0 0; }
 .login-warn[hidden] { display: none; }
-.bal-views[hidden] { display: none; }
+.bal-split[hidden] { display: none; }
 .bal-split { margin-top: 10px; }
 .bal-split .tag { color: var(--muted); }
 .acc-total { margin-top: 12px; padding-top: 8px; border-top: 1px dashed var(--border-dim); }
@@ -516,8 +521,6 @@ dialog .btn { width: 100%; margin-top: 16px; }
   .filters { flex: 1 1 0; min-width: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
   .filters::-webkit-scrollbar { display: none; }
   .filter { white-space: nowrap; min-height: 44px; padding: 0 10px; }
-  .bal-views { flex-wrap: wrap; overflow-x: visible; }
-  .bal-views .filter { padding: 0 8px; }
   .search-toggle {
     display: inline-flex; align-items: center; justify-content: center; flex: none;
     width: 44px; height: 44px; background: none; border: 0; border-radius: 4px; color: var(--muted);

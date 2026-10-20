@@ -49,7 +49,8 @@
         all: check(own + savings + creditCards + loans),
         noLoans: check(own + savings + creditCards),
         noCards: check(own + savings + loans),
-        ownOnly: check(own + savings)
+        ownOnly: check(own + savings),
+        loansOnly: check(creditCards + loans)
       }
     };
   }

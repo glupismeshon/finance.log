@@ -12,7 +12,8 @@
     all: ["debit", "cash", "savings", "credit_card", "loan"],
     noLoans: ["debit", "cash", "savings", "credit_card"],
     noCards: ["debit", "cash", "savings", "loan"],
-    ownOnly: ["debit", "cash", "savings"]
+    ownOnly: ["debit", "cash", "savings"],
+    loansOnly: ["credit_card", "loan"]
   };
 
   function project(state, {today, days = 60, view = "noLoans"} = {}) {

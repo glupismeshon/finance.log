@@ -487,30 +487,34 @@
       b.setAttribute("aria-current",on ? "page" : "false");
     });
   }
-  const balViewKey = () => ["all","noLoans","noCards","ownOnly"].includes(settings.balanceView) ? settings.balanceView : "noLoans";
+  const BALANCE_VIEWS = ["all", "ownOnly", "loansOnly"];
+  const balViewKey = () => BALANCE_VIEWS.includes(settings.balanceView) ? settings.balanceView : "all";
+  const balViewLabel = view => ({all: "balance.vAll", ownOnly: "balance.vOwn", loansOnly: "balance.vLoans"}[view]);
   function renderAccountsTotal() {
-    const bd = views.breakdown(state), debt = bd.hasCards || bd.hasLoans, view = balViewKey();
-    const label = {all: "balance.vAll", noLoans: "balance.vNoLoans", noCards: "balance.vNoCards", ownOnly: "balance.vOwn"}[view];
-    $("accounts-total").textContent = debt
-      ? t("acc.totalView", {view: t(label).replace(/^\[|\]$/g, ""), sum: money(bd.views[view])})
-      : t("acc.total", {sum: money(bd.views.ownOnly)});
+    const bd = views.breakdown(state), view = balViewKey();
+    $("accounts-total").textContent = t("acc.totalView", {view: t(balViewLabel(view)).replace(/^\[|\]$/g, ""), sum: money(bd.views[view])});
   }
   function renderBalance() {
-    const bd = views.breakdown(state), debt = bd.hasCards || bd.hasLoans;
-    const view = balViewKey();
-    $("balance-views").hidden = !debt;
-    document.querySelectorAll("[data-bal-view]").forEach(b => { const on = b.dataset.balView === view; b.classList.toggle("active",on); b.setAttribute("aria-pressed",String(on)); });
-    bigMoney($("balance"), debt ? bd.views[view] : bd.views.ownOnly);
-    const lines = [["balance.own",bd.own],["balance.savings",bd.savings],["balance.cards",bd.creditCards],["balance.loans",bd.loans],["balance.people",bd.other]].filter(l => l[1] !== 0);
+    const bd = views.breakdown(state), view = balViewKey();
+    const next = BALANCE_VIEWS[(BALANCE_VIEWS.indexOf(view) + 1) % BALANCE_VIEWS.length];
+    $("balance-view").textContent = t(balViewLabel(view));
+    $("balance-toggle").setAttribute("aria-label", t("balance.switchView", {current: t(balViewLabel(view)), next: t(balViewLabel(next))}));
+    $("balance-toggle").setAttribute("aria-expanded", String(view !== "all"));
+    bigMoney($("balance"), bd.views[view]);
+    const lines = view === "ownOnly"
+      ? [["balance.own",bd.own],["balance.savings",bd.savings]]
+      : view === "loansOnly" ? [["balance.cards",bd.creditCards],["balance.loans",bd.loans]] : [];
+    $("balance-split").hidden = view === "all";
     $("balance-split").replaceChildren(...lines.map(([key,sum]) => {
       const line = node("div","log-line");
       line.append(node("span","tag","--"),node("span","log-name",t(key)),node("strong",sum < 0 ? "over" : "",money(sum)));
       return line;
     }));
   }
-  document.querySelectorAll("[data-bal-view]").forEach(b => b.addEventListener("click",()=>{
-    persistNotice(boot.set({balanceView: b.dataset.balView})); settings = boot.get(); renderBalance(); renderAccountsTotal();
-  }));
+  $("balance-toggle").addEventListener("click",()=>{
+    const next = BALANCE_VIEWS[(BALANCE_VIEWS.indexOf(balViewKey()) + 1) % BALANCE_VIEWS.length];
+    persistNotice(boot.set({balanceView: next})); settings = boot.get(); renderBalance(); renderAccountsTotal();
+  });
   function render() {
     const sums = views.totals(state);
     renderBalance();
@@ -2073,9 +2077,9 @@
     $("pl-soon").replaceChildren(...(rows.length ? rows : [node("div", "muted pl-line", t("plans.soonEmpty"))]));
   }
   function renderPlanForecast() {
-    const td = today(), view = balViewKey(), bd = views.breakdown(state);
+    const td = today(), view = balViewKey();
     const active = state.schedules.some(s => !s.archived && !s.paused);
-    $("pl-fc-view").textContent = bd.hasCards || bd.hasLoans ? t("plans.fc.view", {view: t({all: "balance.vAll", noLoans: "balance.vNoLoans", noCards: "balance.vNoCards", ownOnly: "balance.vOwn"}[view]).replace(/^\[|\]$/g, "")}) : "";
+    $("pl-fc-view").textContent = t("plans.fc.view", {view: t(balViewLabel(view)).replace(/^\[|\]$/g, "")});
     $("pl-fc-deficit").hidden = true;
     $("pl-chart").replaceChildren(); plFc = null;
     if (!active) { $("pl-fc-line").textContent = t("plans.fc.empty"); $("pl-fc-tip").textContent = ""; return; }

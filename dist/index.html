@@ -364,16 +364,14 @@
       </section>
 
       <section class="box s-journal" id="balance-box" aria-labelledby="balance-label">
-        <h2 class="box-label" id="balance-label" data-i18n="balance.title"></h2>
+        <h2 class="box-label balance-label" id="balance-label">
+          <button type="button" class="balance-toggle" id="balance-toggle" aria-controls="balance-split">
+            <span data-i18n="balance.title"></span> <span id="balance-view"></span>
+          </button>
+        </h2>
         <div class="box-body">
-          <div class="filters bal-views" id="balance-views" role="group" data-i18n-aria-label="balance.viewsAria" hidden>
-            <button class="filter" type="button" data-bal-view="all" data-i18n="balance.vAll"></button>
-            <button class="filter" type="button" data-bal-view="noLoans" data-i18n="balance.vNoLoans"></button>
-            <button class="filter" type="button" data-bal-view="noCards" data-i18n="balance.vNoCards"></button>
-            <button class="filter" type="button" data-bal-view="ownOnly" data-i18n="balance.vOwn"></button>
-          </div>
           <div class="balance-number" id="balance">0<span class="balance-decimals">,00 ₽</span></div>
-          <div class="log-lines bal-split" id="balance-split"></div>
+          <div class="log-lines bal-split" id="balance-split" hidden></div>
           <div class="log-lines">
             <div class="log-line"><span class="tag ok">[ok]</span><span class="log-name" data-i18n="balance.income"></span><strong class="income" id="income-total">+0,00 ₽</strong></div>
             <div class="log-line"><span class="tag warn">[--]</span><span class="log-name" data-i18n="balance.expense"></span><strong id="expense-total">−0,00 ₽</strong></div>
