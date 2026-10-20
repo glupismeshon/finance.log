@@ -6,6 +6,10 @@
   "scripts": {
     "test": "node --test tests/*.test.cjs",
     "start": "python3 -m http.server 8765 --bind 127.0.0.1 --directory dist",
-    "start:lan": "python3 -m http.server 8765 --bind 0.0.0.0 --directory dist"
+    "start:lan": "python3 -m http.server 8765 --bind 0.0.0.0 --directory dist",
+    "deploy": "wrangler pages deploy dist --project-name money-log --branch main --commit-dirty=true"
+  },
+  "devDependencies": {
+    "wrangler": "^4.151.2"
   }
 }
