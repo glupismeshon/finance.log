@@ -96,7 +96,7 @@ loans:        accountId, rateYearly, termMonths, paymentDay, method: annuity|dif
 - [x] Этап 1 — счета, переводы, комиссии, сверка с банком
 - [x] Этап 2 — категории, быстрый расход, память магазинов
 - [x] Английский язык, 23 темы, экран настроек
-- [x] Хостинг: Cloudflare — https://money-log.money-log.workers.dev (`npm run deploy`)
+- [x] Хостинг: Cloudflare — https://finance-log.money-log.workers.dev (`npm run deploy`)
 - [x] Этап 3 — подробный чек, тепловая карта, аналитика покупок
 - [ ] Этап 4 — регулярные платежи, прогноз до зарплаты ← следующий
 - [ ] Этапы 1–10

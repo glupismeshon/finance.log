@@ -29,7 +29,7 @@
 
 ## Онлайн
 
-https://money-log.money-log.workers.dev — Cloudflare. Обновить: `npm run deploy` (нужен `npx wrangler login` один раз).
+https://finance-log.money-log.workers.dev — Cloudflare Workers. Обновить: `npm run deploy` (нужен `npx wrangler login` один раз).
 
 ## На iPhone
 
