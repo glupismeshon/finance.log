@@ -1,0 +1,535 @@
+(function (root) {
+  "use strict";
+  // Словари интерфейса (ru / en), t(), plural(), форматирование денег и дат.
+  const ru = {
+    "app.title": "money.log — журнал денег",
+    "app.desc": "Личный журнал денег. Записывайте доходы и расходы без лишнего.",
+    "common.back": "[← назад]",
+    "common.edit": "[изменить]",
+    "common.close": "Закрыть",
+    "common.optional": "// необязательно",
+    "amount.ph": "0,00",
+
+    "theme.change": "Сменить тему",
+    "theme.toLight": "[светлая]",
+    "theme.toDark": "[тёмная]",
+    "theme.toLightAria": "Включить светлую тему",
+    "theme.toDarkAria": "Включить тёмную тему",
+
+    "nav.menu": "Меню",
+    "nav.sectionsAria": "Разделы",
+    "nav.sections": "// разделы",
+    "nav.journal": "журнал",
+    "nav.trash": "удалённые",
+    "nav.settings": "настройки",
+    "nav.accounts": "// счета",
+    "nav.addAccount": "Добавить счёт",
+    "nav.allAccounts": "все счета",
+    "nav.data": "// данные",
+    "nav.export": "скачать копию",
+    "nav.import": "восстановить",
+    "nav.note": "// хранится в этом браузере.<br>// без аккаунта и синхронизации.",
+    "page.accounts": "счета",
+    "page.plans": "планы",
+    "page.more": "ещё",
+    "tab.aria": "Вкладки",
+
+    "acc.title": "счета",
+    "acc.total": "// итого {sum}",
+    "acc.archived": "// в архиве:",
+    "acc.show": "[показать]",
+    "acc.hide": "[скрыть]",
+    "acc.add": "+ счёт",
+    "acc.one": "счёт",
+    "acc.reconcile": "[сверить с банком]",
+    "acc.archive": "[в архив]",
+    "acc.unarchive": "[вернуть из архива]",
+    "acc.meta": "// {kind}{archived} · начальный остаток {opening} на {date}",
+    "acc.metaArchived": " · в архиве",
+    "acc.withArchive": "{name} (архив)",
+    "kind.debit": "дебетовая",
+    "kind.cash": "наличные",
+    "kind.savings": "накопительный",
+    "kind.credit_card": "кредитная карта",
+    "kind.loan": "кредит",
+    "kind.person": "долг человека",
+    "stored.default": "Основной",
+    "stored.fee": "Комиссия за перевод",
+    "stored.recon": "Сверка с банком",
+
+    "quick.income": "+ пришло",
+    "quick.expense": "− ушло",
+    "quick.transfer": "⇄ перевёл",
+
+    "journal.entries": "записи",
+    "journal.count": {one: "{n} запись", few: "{n} записи", many: "{n} записей"},
+    "trash.backAria": "Назад к списку «ещё»",
+    "filter.aria": "Тип операций",
+    "filter.all": "[ все ]",
+    "filter.expense": "[ расходы ]",
+    "filter.income": "[ доходы ]",
+    "filter.transfer": "[ переводы ]",
+    "filter.account": "Фильтр по счёту",
+    "search.toggle": "Поиск",
+    "search.placeholder": "найти запись…",
+    "search.aria": "Найти запись",
+
+    "plans.title": "планы",
+    "plans.soon": "появится на этапе 4",
+
+    "more.data": "данные",
+    "more.export": "[↓ скачать копию]",
+    "more.import": "[↑ восстановить копию]",
+    "more.local": "// хранится на этом устройстве",
+    "more.open": "[открыть список]",
+    "more.openSettings": "[открыть настройки]",
+    "more.about": "о приложении",
+
+    "balance.title": "остаток",
+    "balance.income": "доходы",
+    "balance.expense": "расходы",
+    "balance.accounts": "// счетов:",
+    "balance.accountsLink": "[счета]",
+    "balance.accountsAria": "Открыть список счетов",
+    "balance.note": "// за всё время, без удалённых",
+
+    "form.new": "новая запись",
+    "form.edit": "изменить запись",
+    "form.editShort": "изменить",
+    "form.mobile.income": "пришло",
+    "form.mobile.expense": "ушло",
+    "form.mobile.transfer": "перевод",
+    "form.closeAria": "Закрыть форму",
+    "form.typeAria": "Тип новой записи",
+    "form.typeExpense": "[ расход ]",
+    "form.typeIncome": "[ доход ]",
+    "form.typeTransfer": "[ перевод ]",
+    "form.amount": "сумма",
+    "form.from": "откуда",
+    "form.to": "куда",
+    "form.fee": "комиссия",
+    "form.note": "заметка",
+    "form.date": "дата",
+    "form.dateRow": "// дата:",
+    "form.today": "сегодня",
+    "form.submit.income": "Записать доход",
+    "form.submit.expense": "Записать расход",
+    "form.submit.transfer": "Записать перевод",
+    "form.submitShort": "записать",
+    "form.saveChanges": "Сохранить изменения",
+    "form.cancelEdit": "Отменить изменение",
+    "form.delete": "[удалить запись]",
+    "form.hint": "// <kbd>N</kbd> новая запись · <kbd>Esc</kbd> отмена",
+    "form.notePh.income": "Например, зарплата",
+    "form.notePh.transfer": "Например, на накопления",
+    "form.notePh.expense": "Например, кофе по дороге",
+
+    "toast.undo": "[вернуть]",
+    "toast.closeAria": "Закрыть уведомление",
+
+    "acform.new": "новый счёт",
+    "acform.edit": "изменить счёт",
+    "acform.name": "название",
+    "acform.namePh": "Например, Сбер",
+    "acform.kind": "вид",
+    "acform.opening": "начальный остаток",
+    "acform.minus": "[± минус]",
+    "acform.date": "дата начального остатка",
+    "acform.save": "Сохранить",
+
+    "recon.title": "сверка",
+    "recon.titleFor": "сверка · {name}",
+    "recon.bank": "сколько показывает банк?",
+    "recon.date": "на дату",
+    "recon.note": "пояснение",
+    "recon.notePh": "Сверка с банком",
+    "recon.calc": "// по журналу на эту дату: {sum}",
+    "recon.diff": "// разница: {diff}",
+    "recon.save": "записать корректировку",
+    "recon.match": "всё сходится",
+
+    "import.title": "восстановить копию",
+    "import.note": "// совпадающие записи будут пропущены. Текущий начальный остаток сохранится, если в журнале уже есть данные.",
+    "import.desc": "В файле {count}. Будет добавлено: {added}. Удалённые записи также сохранятся.",
+    "import.confirm": "Добавить записи из копии",
+    "noscript": "Для работы журнала включите JavaScript в браузере.",
+
+    "empty.notFound": "ничего не найдено",
+    "empty.notFoundHint": "// попробуйте другой поиск или выберите [ все ]",
+    "empty.trash": "удалённых записей нет",
+    "empty.trashHint": "// удалённые операции остаются здесь, их можно вернуть",
+    "empty.acc": "по этому счёту записей нет",
+    "empty.loaded": "журнал загружен",
+    "empty.none": "записей пока нет",
+    "empty.first": "+ первая запись",
+
+    "type.income": "доход",
+    "type.expense": "расход",
+    "type.transfer": "перевод",
+    "type.adjustment": "сверка",
+    "row.deleted": "удалено",
+    "row.restore": "[вернуть]",
+    "row.remove": "[удалить]",
+    "row.restoreAria": "Восстановить: {name}",
+    "row.editAria": "Изменить: {name}",
+    "row.removeAria": "Удалить: {name}",
+    "date.today": "сегодня",
+
+    "msg.deleted": "Запись перемещена в удалённые.",
+    "msg.restored": "Запись возвращена в журнал.",
+    "msg.restoredShort": "Запись возвращена.",
+    "msg.accSaved": "Счёт сохранён.",
+    "msg.accAdded": "Счёт добавлен.",
+    "msg.reconMatch": "Всё сходится, корректировка не нужна.",
+    "msg.reconDone": "Корректировка записана: {diff}.",
+    "msg.accUnarchived": "Счёт возвращён из архива.",
+    "msg.accArchived": "Счёт перенесён в архив.",
+    "msg.changesSaved": "Изменения сохранены.",
+    "msg.transferDone": "Перевод записан.",
+    "msg.incomeDone": "Доход записан.",
+    "msg.expenseDone": "Расход записан.",
+    "msg.exported": "Копия подготовлена для скачивания.",
+    "msg.imported": "Копия восстановлена. Добавлено записей: {added}.",
+    "msg.otherTab": "Журнал обновлён в другой вкладке.",
+
+    "err.date": "Укажите корректную дату.",
+    "err.future": "Запишите операцию, когда она произойдёт. Будущие даты пока не поддерживаются.",
+    "err.reconFuture": "Сверка возможна на сегодня или раньше.",
+    "err.entryDeleted": "Запись была удалена. Начните новую запись.",
+    "err.pickAccount": "Выберите счёт.",
+    "err.twoAccounts": "Выберите два разных счёта: «откуда» и «куда».",
+    "err.locked": "Сначала нужно восстановить доступ к сохранённому журналу.",
+    "err.saveFail": "Не удалось сохранить. Проверьте свободное место и разрешение браузера на хранение данных. Запись не добавлена.",
+    "err.read": "Не удалось прочитать сохранённый журнал. Исходные данные не изменены. Запись отключена; кнопка «Скачать копию» сохранит исходные данные для восстановления.",
+    "err.noData": "Нет доступных данных для копии.",
+    "err.tooBig": "Копия слишком большая. Максимум — 25 МБ.",
+    "err.notJson": "Это не JSON-копия money.log.",
+    "err.otherTab": "В другой вкладке появились некорректные данные. Запись временно отключена, исходный журнал сохранён.",
+
+    "settings.lang": "язык",
+    "settings.langAria": "Язык",
+    "settings.auto": "[ авто ]",
+    "settings.ru": "[ русский ]",
+    "settings.en": "[ english ]",
+    "settings.theme": "тема",
+    "settings.modeAria": "Режим темы",
+    "settings.dark": "[ тёмная ]",
+    "settings.light": "[ светлая ]",
+    "settings.darkList": "// тёмные",
+    "settings.lightList": "// светлые",
+    "settings.saveFail": "Настройки применены, но браузер не разрешил их сохранить."
+
+    // Названия стандартных категорий (этап 2): ключи вида "cat.<key>", например "cat.groceries".
+  };
+
+  const en = {
+    "app.title": "money.log — money journal",
+    "app.desc": "a personal money journal. log income and expenses, nothing extra.",
+    "common.back": "[← back]",
+    "common.edit": "[edit]",
+    "common.close": "close",
+    "common.optional": "// optional",
+    "amount.ph": "0.00",
+
+    "theme.change": "change theme",
+    "theme.toLight": "[light]",
+    "theme.toDark": "[dark]",
+    "theme.toLightAria": "switch to light theme",
+    "theme.toDarkAria": "switch to dark theme",
+
+    "nav.menu": "menu",
+    "nav.sectionsAria": "sections",
+    "nav.sections": "// sections",
+    "nav.journal": "journal",
+    "nav.trash": "deleted",
+    "nav.settings": "settings",
+    "nav.accounts": "// accounts",
+    "nav.addAccount": "add account",
+    "nav.allAccounts": "all accounts",
+    "nav.data": "// data",
+    "nav.export": "download backup",
+    "nav.import": "restore",
+    "nav.note": "// stored in this browser.<br>// no account, no sync.",
+    "page.accounts": "accounts",
+    "page.plans": "plans",
+    "page.more": "more",
+    "tab.aria": "tabs",
+
+    "acc.title": "accounts",
+    "acc.total": "// total {sum}",
+    "acc.archived": "// archived:",
+    "acc.show": "[show]",
+    "acc.hide": "[hide]",
+    "acc.add": "+ account",
+    "acc.one": "account",
+    "acc.reconcile": "[reconcile with bank]",
+    "acc.archive": "[archive]",
+    "acc.unarchive": "[restore from archive]",
+    "acc.meta": "// {kind}{archived} · opening balance {opening} on {date}",
+    "acc.metaArchived": " · archived",
+    "acc.withArchive": "{name} (archived)",
+    "kind.debit": "debit",
+    "kind.cash": "cash",
+    "kind.savings": "savings",
+    "kind.credit_card": "credit card",
+    "kind.loan": "loan",
+    "kind.person": "owed by person",
+    "stored.default": "main",
+    "stored.fee": "transfer fee",
+    "stored.recon": "bank reconciliation",
+
+    "quick.income": "+ money in",
+    "quick.expense": "− money out",
+    "quick.transfer": "⇄ transfer",
+
+    "journal.entries": "entries",
+    "journal.count": {one: "{n} entry", other: "{n} entries"},
+    "trash.backAria": "back to the more list",
+    "filter.aria": "operation type",
+    "filter.all": "[ all ]",
+    "filter.expense": "[ expenses ]",
+    "filter.income": "[ income ]",
+    "filter.transfer": "[ transfers ]",
+    "filter.account": "filter by account",
+    "search.toggle": "search",
+    "search.placeholder": "find an entry…",
+    "search.aria": "find an entry",
+
+    "plans.title": "plans",
+    "plans.soon": "coming in stage 4",
+
+    "more.data": "data",
+    "more.export": "[↓ download backup]",
+    "more.import": "[↑ restore backup]",
+    "more.local": "// stored on this device",
+    "more.open": "[open list]",
+    "more.openSettings": "[open settings]",
+    "more.about": "about",
+
+    "balance.title": "balance",
+    "balance.income": "income",
+    "balance.expense": "expenses",
+    "balance.accounts": "// accounts:",
+    "balance.accountsLink": "[accounts]",
+    "balance.accountsAria": "open accounts list",
+    "balance.note": "// all time, excluding deleted",
+
+    "form.new": "new entry",
+    "form.edit": "edit entry",
+    "form.editShort": "edit",
+    "form.mobile.income": "money in",
+    "form.mobile.expense": "money out",
+    "form.mobile.transfer": "transfer",
+    "form.closeAria": "close form",
+    "form.typeAria": "entry type",
+    "form.typeExpense": "[ expense ]",
+    "form.typeIncome": "[ income ]",
+    "form.typeTransfer": "[ transfer ]",
+    "form.amount": "amount",
+    "form.from": "from",
+    "form.to": "to",
+    "form.fee": "fee",
+    "form.note": "note",
+    "form.date": "date",
+    "form.dateRow": "// date:",
+    "form.today": "today",
+    "form.submit.income": "log income",
+    "form.submit.expense": "log expense",
+    "form.submit.transfer": "log transfer",
+    "form.submitShort": "log",
+    "form.saveChanges": "save changes",
+    "form.cancelEdit": "cancel edit",
+    "form.delete": "[delete entry]",
+    "form.hint": "// <kbd>N</kbd> new entry · <kbd>Esc</kbd> cancel",
+    "form.notePh.income": "e.g. salary",
+    "form.notePh.transfer": "e.g. to savings",
+    "form.notePh.expense": "e.g. coffee on the way",
+
+    "toast.undo": "[undo]",
+    "toast.closeAria": "close notification",
+
+    "acform.new": "new account",
+    "acform.edit": "edit account",
+    "acform.name": "name",
+    "acform.namePh": "e.g. chase",
+    "acform.kind": "type",
+    "acform.opening": "opening balance",
+    "acform.minus": "[± minus]",
+    "acform.date": "opening balance date",
+    "acform.save": "save",
+
+    "recon.title": "reconcile",
+    "recon.titleFor": "reconcile · {name}",
+    "recon.bank": "what does the bank show?",
+    "recon.date": "as of date",
+    "recon.note": "comment",
+    "recon.notePh": "bank reconciliation",
+    "recon.calc": "// per journal on this date: {sum}",
+    "recon.diff": "// difference: {diff}",
+    "recon.save": "record adjustment",
+    "recon.match": "all matches",
+
+    "import.title": "restore backup",
+    "import.note": "// matching entries will be skipped. the current opening balance is kept if the journal already has data.",
+    "import.desc": "the file has {count}. will add: {added}. deleted entries are kept too.",
+    "import.confirm": "add entries from backup",
+    "noscript": "enable javascript to use the journal.",
+
+    "empty.notFound": "nothing found",
+    "empty.notFoundHint": "// try another search or pick [ all ]",
+    "empty.trash": "no deleted entries",
+    "empty.trashHint": "// deleted entries stay here and can be restored",
+    "empty.acc": "no entries for this account",
+    "empty.loaded": "journal loaded",
+    "empty.none": "no entries yet",
+    "empty.first": "+ first entry",
+
+    "type.income": "income",
+    "type.expense": "expense",
+    "type.transfer": "transfer",
+    "type.adjustment": "reconciliation",
+    "row.deleted": "deleted",
+    "row.restore": "[undo]",
+    "row.remove": "[delete]",
+    "row.restoreAria": "restore: {name}",
+    "row.editAria": "edit: {name}",
+    "row.removeAria": "delete: {name}",
+    "date.today": "today",
+
+    "msg.deleted": "entry moved to deleted.",
+    "msg.restored": "entry restored to the journal.",
+    "msg.restoredShort": "entry restored.",
+    "msg.accSaved": "account saved.",
+    "msg.accAdded": "account added.",
+    "msg.reconMatch": "all matches, no adjustment needed.",
+    "msg.reconDone": "adjustment recorded: {diff}.",
+    "msg.accUnarchived": "account restored from archive.",
+    "msg.accArchived": "account moved to archive.",
+    "msg.changesSaved": "changes saved.",
+    "msg.transferDone": "transfer logged.",
+    "msg.incomeDone": "income logged.",
+    "msg.expenseDone": "expense logged.",
+    "msg.exported": "backup is ready to download.",
+    "msg.imported": "backup restored. entries added: {added}.",
+    "msg.otherTab": "journal updated in another tab.",
+
+    "err.date": "enter a valid date.",
+    "err.future": "log the operation when it happens. future dates are not supported yet.",
+    "err.reconFuture": "reconciliation is possible for today or earlier.",
+    "err.entryDeleted": "this entry was deleted. start a new entry.",
+    "err.pickAccount": "pick an account.",
+    "err.twoAccounts": "pick two different accounts: \"from\" and \"to\".",
+    "err.locked": "restore access to the saved journal first.",
+    "err.saveFail": "could not save. check free space and the browser storage permission. the entry was not added.",
+    "err.read": "could not read the saved journal. the original data is unchanged. writing is disabled; \"download backup\" will save the original data for recovery.",
+    "err.noData": "no data available for a backup.",
+    "err.tooBig": "the backup is too large. maximum is 25 MB.",
+    "err.notJson": "this is not a money.log JSON backup.",
+    "err.otherTab": "another tab has invalid data. writing is disabled for now, the original journal is kept.",
+
+    "settings.lang": "language",
+    "settings.langAria": "language",
+    "settings.auto": "[ auto ]",
+    "settings.ru": "[ русский ]",
+    "settings.en": "[ english ]",
+    "settings.theme": "theme",
+    "settings.modeAria": "theme mode",
+    "settings.dark": "[ dark ]",
+    "settings.light": "[ light ]",
+    "settings.darkList": "// dark",
+    "settings.lightList": "// light",
+    "settings.saveFail": "settings applied, but the browser did not allow saving them.",
+
+    // Ошибки dist/core: ключ = точный русский текст.
+    errors: {
+      "Введите сумму цифрами, максимум два знака после запятой.": "enter the amount in digits, up to two decimal places.",
+      "Слишком большая сумма. Максимум — 9 999 999 999,99 ₽.": "amount is too large. maximum is 9,999,999,999.99 ₽.",
+      "Сумма должна быть больше нуля.": "amount must be greater than zero.",
+      "Общая сумма превышает поддерживаемый предел.": "total exceeds the supported limit.",
+      "Счёт не найден.": "account not found.",
+      "Запись не найдена.": "entry not found.",
+      "Счёт в архиве.": "account is archived.",
+      "Счёт с таким названием уже есть.": "an account with this name already exists.",
+      "Название счёта — от 1 до 100 символов.": "account name must be 1 to 100 characters.",
+      "Нужен хотя бы один счёт.": "at least one account is required.",
+      "Не удалось прочитать копию money.log. Проверьте формат файла.": "could not read the money.log backup. check the file format.",
+      "В копии есть некорректные или повторяющиеся записи.": "the backup contains invalid or duplicate entries.",
+      "В копии есть некорректные или повторяющиеся счета.": "the backup contains invalid or duplicate accounts.",
+      "В копии есть некорректные или повторяющиеся категории.": "the backup contains invalid or duplicate categories."
+    }
+  };
+
+  const DICTS = {ru, en};
+  // Тексты, которые ядро записывает в данные по умолчанию: показываем переведёнными.
+  const STORED = {"Основной": "stored.default", "Комиссия за перевод": "stored.fee", "Сверка с банком": "stored.recon"};
+  const LOCALES = {ru: "ru-RU", en: "en-US"};
+  let lang = "ru";
+
+  function resolve(pref, navLang) {
+    if (pref === "ru" || pref === "en") return pref;
+    const n = navLang === undefined ? (root.navigator && root.navigator.language) : navLang;
+    return String(n || "").toLowerCase().startsWith("ru") ? "ru" : "en";
+  }
+  function setLang(value) { lang = DICTS[value] ? value : "en"; return lang; }
+  const getLang = () => lang;
+  const locale = () => LOCALES[lang];
+  function fill(text, params) {
+    return params ? text.replace(/\{(\w+)\}/g, (m, k) => (k in params ? params[k] : m)) : text;
+  }
+  function plural(n, forms) {
+    if (lang === "ru") {
+      const last = n % 10, lastTwo = n % 100;
+      return last === 1 && lastTwo !== 11 ? forms.one : last >= 2 && last <= 4 && (lastTwo < 12 || lastTwo > 14) ? forms.few : forms.many;
+    }
+    return n === 1 ? forms.one : forms.other;
+  }
+  function t(key, params) {
+    let value = DICTS[lang][key];
+    if (value === undefined) value = ru[key];
+    if (value === undefined) return key;
+    if (typeof value === "object") value = plural(params && params.n !== undefined ? params.n : 0, value);
+    return fill(value, params);
+  }
+  // plural-ключ: tp("journal.count", 5) -> «5 записей» / «5 entries»
+  const tp = (key, n, params) => t(key, {...params, n});
+  // перевод ошибок ядра (en); если перевода нет — как есть
+  function err(error) {
+    const message = typeof error === "string" ? error : error && error.message;
+    return (lang === "en" && en.errors[message]) || message || "";
+  }
+  const stored = text => (STORED[text] ? t(STORED[text]) : text);
+  const kindLabel = kind => (DICTS[lang]["kind." + kind] !== undefined || ru["kind." + kind] !== undefined ? t("kind." + kind) : kind);
+
+  function moneyParts(cents) {
+    const abs = new Intl.NumberFormat(locale(), {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(Math.abs(cents) / 100);
+    return {sign: cents < 0 ? "−" : "", integer: abs.slice(0, -3), fraction: abs.slice(-3)};
+  }
+  // «1 234,56 ₽» (ru) / «1,234.56 ₽» (en); symbol:false — без знака рубля
+  function fmtMoney(cents, symbol = true) {
+    const p = moneyParts(cents);
+    return p.sign + p.integer + p.fraction + (symbol ? " ₽" : "");
+  }
+  function fmtDate(iso, style = "long") {
+    const options = style === "short" ? {day: "2-digit", month: "short", year: "numeric"} : {day: "numeric", month: "long", year: "numeric"};
+    const date = typeof iso === "string" ? new Date(iso + "T12:00:00") : iso;
+    const text = new Intl.DateTimeFormat(locale(), options).format(date);
+    return lang === "en" ? text.toLowerCase() : text;
+  }
+
+  // Проходит по DOM и подставляет строки из data-i18n*.
+  function applyI18n(scope) {
+    const doc = root.document, base = scope || doc;
+    const each = (attr, fn) => base.querySelectorAll("[" + attr + "]").forEach(el => fn(el, t(el.getAttribute(attr))));
+    each("data-i18n", (el, v) => { el.textContent = v; });
+    each("data-i18n-html", (el, v) => { el.innerHTML = v; });
+    each("data-i18n-placeholder", (el, v) => { el.placeholder = v; });
+    each("data-i18n-aria-label", (el, v) => el.setAttribute("aria-label", v));
+    each("data-i18n-title", (el, v) => { el.title = v; });
+    each("data-i18n-content", (el, v) => { el.setAttribute("content", v); });
+    if (!scope) { doc.documentElement.lang = lang; doc.title = t("app.title"); }
+  }
+
+  const api = {ru, en, resolve, setLang, getLang, locale, t, tp, plural, err, stored, kindLabel, moneyParts, fmtMoney, fmtDate, applyI18n};
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+  else (root.MoneyCore = root.MoneyCore || {}).i18n = api;
+})(globalThis);

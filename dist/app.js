@@ -1,6 +1,7 @@
 "use strict";
 (() => {
-  const {money: M, schema, journal, views, accounts: acct} = globalThis.MoneyCore;
+  const {money: M, schema, journal, views, accounts: acct, i18n: I, boot} = globalThis.MoneyCore;
+  const t = I.t, tp = I.tp;
   const newId = () => {
     if (crypto.randomUUID) return crypto.randomUUID();
     const b = crypto.getRandomValues(new Uint8Array(16)); b[6] = b[6] & 15 | 64; b[8] = b[8] & 63 | 128;
@@ -11,6 +12,8 @@
   const $ = id => document.getElementById(id);
   let state = schema.empty(todayISO()), mode = "expense", filter = "all", trash = false, editing = null, pendingImport = null, locked = false;
   let undoId = null, tab = "journal", currentAccount = null, showArchived = false, accountEditing = null, reconAccount = null, activeSheet = null;
+  let settings = boot.get();
+  I.setLang(I.resolve(settings.lang));
   const mobileQuery = window.matchMedia("(max-width: 599px)");
   const isMobile = () => mobileQuery.matches;
   function todayISO() {
@@ -19,13 +22,14 @@
   }
   const today = todayISO;
   const accById = id => state.accounts.find(a => a.id === id);
-  const accName = id => accById(id)?.name || "?";
+  const accName = id => { const a = accById(id); return a ? I.stored(a.name) : "?"; };
+  const accLabel = a => a.archived ? t("acc.withArchive", {name: I.stored(a.name)}) : I.stored(a.name);
   const firstActive = () => (acct.activeAccounts(state)[0] || state.accounts[0]).id;
   const amountOf = op => Math.abs(op.legs[0].amountCents);
-  const money = cents => (cents < 0 ? "−" : "") + new Intl.NumberFormat("ru-RU", {minimumFractionDigits:2,maximumFractionDigits:2}).format(Math.abs(cents) / 100) + " ₽";
+  const money = cents => I.fmtMoney(cents);
   const signed = cents => (cents > 0 ? "+" : "") + money(cents);
-  const amountInput = cents => (cents / 100).toFixed(2).replace(".",",");
-  const dateLabel = value => new Intl.DateTimeFormat("ru-RU", {day:"numeric",month:"long",year:"numeric"}).format(new Date(value+"T12:00:00"));
+  const amountInput = cents => { const v = (cents / 100).toFixed(2); return I.getLang() === "ru" ? v.replace(".", ",") : v; };
+  const dateLabel = value => I.fmtDate(value);
   function storageError(message) { $("storage-error").textContent = message; $("storage-error").hidden = false; }
   try {
     const raw = localStorage.getItem(KEY), legacy = raw === null ? localStorage.getItem(KEY_V1) : null;
@@ -36,13 +40,13 @@
     }
   } catch {
     locked = true;
-    storageError("Не удалось прочитать сохранённый журнал. Исходные данные не изменены. Запись отключена; кнопка «Скачать копию» сохранит исходные данные для восстановления.");
+    storageError(t("err.read"));
   }
   function commit(next) {
-    if (locked) throw new Error("Сначала нужно восстановить доступ к сохранённому журналу.");
+    if (locked) throw new Error(t("err.locked"));
     const checked = schema.validate(next);
     try { localStorage.setItem(KEY, JSON.stringify(checked)); }
-    catch { throw new Error("Не удалось сохранить. Проверьте свободное место и разрешение браузера на хранение данных. Запись не добавлена."); }
+    catch { throw new Error(t("err.saveFail")); }
     state = checked;
     render();
   }
@@ -66,7 +70,7 @@
     return type === "transfer" ? {from: opFrom(op), to: opTo(op)} : {from: op.legs[0].accountId};
   }
   function fillSelect(select, list, value) {
-    select.replaceChildren(...list.map(a => { const o = document.createElement("option"); o.value = a.id; o.textContent = a.archived ? `${a.name} (архив)` : a.name; return o; }));
+    select.replaceChildren(...list.map(a => { const o = document.createElement("option"); o.value = a.id; o.textContent = accLabel(a); return o; }));
     if (value && list.some(a => a.id === value)) select.value = value;
   }
   function fillAccountSelects(from, to) {
@@ -109,11 +113,10 @@
     $("account-field").hidden = type !== "transfer" && list.length <= 1;
     $("to-field").hidden = type !== "transfer";
     $("fee-field").hidden = type !== "transfer" || !!editing;
-    $("account-select-label").textContent = type === "income" ? "куда" : "откуда";
-    const word = {income: "доход", expense: "расход", transfer: "перевод"}[type];
-    $("save-button").firstElementChild.textContent = isMobile() ? "записать" : editing ? "Сохранить изменения" : `Записать ${word}`;
-    $("form-title").textContent = editing ? (isMobile() ? "изменить" : "изменить запись") : isMobile() ? ({income: "пришло", expense: "ушло", transfer: "перевод"}[type]) : "новая запись";
-    $("note").placeholder = type === "income" ? "Например, зарплата" : type === "transfer" ? "Например, на накопления" : "Например, кофе по дороге";
+    $("account-select-label").textContent = t(type === "income" ? "form.to" : "form.from");
+    $("save-button").firstElementChild.textContent = isMobile() ? t("form.submitShort") : editing ? t("form.saveChanges") : t(`form.submit.${type}`);
+    $("form-title").textContent = editing ? t(isMobile() ? "form.editShort" : "form.edit") : isMobile() ? t(`form.mobile.${type}`) : t("form.new");
+    $("note").placeholder = t(`form.notePh.${type}`);
   }
   function resetForm(focus = false) {
     editing = null;
@@ -146,7 +149,7 @@
   }
   function updateDateSummary() {
     const value = $("date").value;
-    $("date-summary").textContent = !value || value === today() ? "сегодня" : M.validDate(value) ? dateLabel(value) : value;
+    $("date-summary").textContent = !value || value === today() ? t("form.today") : M.validDate(value) ? dateLabel(value) : value;
   }
   function openSheet(box = $("entry-box")) {
     if (box.id === "entry-box" && !isMobile()) return;
@@ -167,8 +170,8 @@
     try {
       commit(journal.setDeleted(state,entry.id,true));
       if(editing === entry.id) dismissSheet();
-      toast("Запись перемещена в удалённые.",entry.id);
-    } catch(e){toast(e.message);}
+      toast(t("msg.deleted"),entry.id);
+    } catch(e){toast(I.err(e));}
   }
   function startNew(type) {
     if (type) mode = type;
@@ -188,12 +191,12 @@
     return $("account-filter").value;
   }
   function renderEntries() {
-    const query = $("search").value.trim().toLocaleLowerCase("ru");
+    const query = $("search").value.trim().toLocaleLowerCase(I.locale());
     const accFilter = effectiveAccount(), onAcc = accFilter !== "all";
     const entries = state.operations.filter(e => e.deleted === trash && (filter === "all" || e.type === filter) && (!onAcc || e.legs.some(l => l.accountId === accFilter)) &&
-      (!query || `${e.note} ${amountInput(amountOf(e))} ${e.legs.map(l => accName(l.accountId)).join(" ")}`.toLocaleLowerCase("ru").includes(query)))
+      (!query || `${I.stored(e.note)} ${amountInput(amountOf(e))} ${e.legs.map(l => accName(l.accountId)).join(" ")}`.toLocaleLowerCase(I.locale()).includes(query)))
       .sort((a,b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
-    $("entry-count").textContent = `${entries.length} ${countWord(entries.length)}`;
+    $("entry-count").textContent = tp("journal.count", entries.length);
     const container = $("entries"); container.replaceChildren();
     if (!entries.length) {
       const empty = node("div","empty-state");
@@ -201,14 +204,14 @@
       const line = (tag, cls, text) => { const p = node("div"); p.append(node("span",`tag ${cls}`,tag),document.createTextNode(text)); return p; };
       empty.append(node("div","prompt","money.log"));
       if (filtered) {
-        empty.append(line("[--]","warn","ничего не найдено"),node("div","muted","// попробуйте другой поиск или выберите [ все ]"));
+        empty.append(line("[--]","warn",t("empty.notFound")),node("div","muted",t("empty.notFoundHint")));
       } else if (trash) {
-        empty.append(line("[ok]","ok","удалённых записей нет"),node("div","muted","// удалённые операции остаются здесь, их можно вернуть"));
+        empty.append(line("[ok]","ok",t("empty.trash")),node("div","muted",t("empty.trashHint")));
       } else if (onAcc) {
-        empty.append(line("[ok]","ok","по этому счёту записей нет"));
+        empty.append(line("[ok]","ok",t("empty.acc")));
       } else {
-        empty.append(line("[ok]","ok","журнал загружен"),line("[ok]","ok","записей пока нет"));
-        const button = node("button","btn primary","+ первая запись"); button.type = "button";
+        empty.append(line("[ok]","ok",t("empty.loaded")),line("[ok]","ok",t("empty.none")));
+        const button = node("button","btn primary",t("empty.first")); button.type = "button";
         button.addEventListener("click",()=>startNew()); empty.append(button);
       }
       container.append(empty); return;
@@ -218,55 +221,51 @@
       if (entry.date !== lastDate) {
         if (lastDate !== "") container.append(node("div","ovdiv"));
         lastDate = entry.date;
-        container.append(node("div","shead",entry.date === today() ? `сегодня · ${dateLabel(entry.date)}` : dateLabel(entry.date)));
+        container.append(node("div","shead",entry.date === today() ? `${t("date.today")} · ${dateLabel(entry.date)}` : dateLabel(entry.date)));
       }
       const row = node("article","todo"); row.dataset.id = entry.id;
       const route = entry.type === "transfer" ? `${accName(opFrom(entry))} → ${accName(opTo(entry))}` : "";
-      const label = {income: "доход", expense: "расход", transfer: "перевод", adjustment: "сверка"}[entry.type];
-      const accText = entry.type === "transfer" ? (entry.note ? route : "") : accName(entry.legs[0].accountId);
+      const label = t(`type.${entry.type}`), noteText = I.stored(entry.note);
+      const accText = entry.type === "transfer" ? (noteText ? route : "") : accName(entry.legs[0].accountId);
       const sign = entry.legs[0].amountCents > 0 ? "+" : "−";
       row.append(node("span",`mark ${entry.type}`,{income: "[+]", expense: "[-]", transfer: "[⇄]", adjustment: "[~]"}[entry.type]));
-      row.append(node("span","ttitle",entry.type === "transfer" ? entry.note || route : entry.note || label));
+      row.append(node("span","ttitle",entry.type === "transfer" ? noteText || route : noteText || label));
       const viewLeg = onAcc && entry.type === "transfer" ? entry.legs.find(l => l.accountId === accFilter) : null;
       const transferText = viewLeg ? `${viewLeg.amountCents > 0 ? "+" : "−"}${money(amountOf(entry))}` : money(amountOf(entry));
       row.append(node("span",`tamount ${entry.type}`,entry.type === "transfer" ? transferText : `${sign}${money(amountOf(entry))}`));
       const meta = node("div","tmeta");
-      meta.append(node("span","tmeta-text",[label,accText,trash ? "удалено" : ""].filter(Boolean).join(" · ")));
+      meta.append(node("span","tmeta-text",[label,accText,trash ? t("row.deleted") : ""].filter(Boolean).join(" · ")));
       const actions = node("span","row-actions");
       if (trash) {
-        const restore = node("button","bracket","[вернуть]");
-        restore.setAttribute("aria-label",`Восстановить: ${entry.note || label}`);
-        restore.addEventListener("click",()=>{try{commit(journal.setDeleted(state,entry.id,false));toast("Запись возвращена в журнал.");}catch(e){toast(e.message);}});
+        const restore = node("button","bracket",t("row.restore"));
+        restore.setAttribute("aria-label",t("row.restoreAria",{name: noteText || label}));
+        restore.addEventListener("click",()=>{try{commit(journal.setDeleted(state,entry.id,false));toast(t("msg.restored"));}catch(e){toast(I.err(e));}});
         actions.append(restore);
       } else {
         const canEdit = entry.type !== "adjustment";
         if (canEdit) {
-          const change = node("button","bracket","[изменить]");
-          change.setAttribute("aria-label",`Изменить: ${entry.note || label}`);
+          const change = node("button","bracket",t("common.edit"));
+          change.setAttribute("aria-label",t("row.editAria",{name: noteText || label}));
           change.addEventListener("click",()=>edit(entry));
           actions.append(change);
           row.addEventListener("click",()=>{ if (isMobile()) edit(entry); });
         } else row.classList.add("no-edit");
-        const remove = node("button","bracket","[удалить]");
-        remove.setAttribute("aria-label",`Удалить: ${entry.note || label}`);
+        const remove = node("button","bracket",t("row.remove"));
+        remove.setAttribute("aria-label",t("row.removeAria",{name: noteText || label}));
         remove.addEventListener("click",()=>softDelete(entry));
         actions.append(remove);
       }
       meta.append(actions); row.append(meta); container.append(row);
     }
   }
-  function countWord(n) {
-    const last = n % 10, lastTwo = n % 100;
-    return last === 1 && lastTwo !== 11 ? "запись" : last >= 2 && last <= 4 && (lastTwo < 12 || lastTwo > 14) ? "записи" : "записей";
-  }
   function bigMoney(el, cents) {
-    const [integer,fraction] = money(cents).split(",");
-    el.replaceChildren(document.createTextNode(integer),node("span","balance-decimals",","+fraction));
+    const p = I.moneyParts(cents);
+    el.replaceChildren(document.createTextNode(p.sign + p.integer),node("span","balance-decimals",p.fraction + "\u00A0₽"));
   }
   function accountRow(r, archived) {
     const row = node("button",`acc-row${archived ? " archived" : ""}`); row.type = "button"; row.dataset.id = r.account.id;
-    const name = node("span","acc-name",r.account.name);
-    name.append(node("span","acc-kind",` · ${acct.KIND_LABELS[r.account.kind]}`));
+    const name = node("span","acc-name",I.stored(r.account.name));
+    name.append(node("span","acc-kind",` · ${I.kindLabel(r.account.kind)}`));
     row.append(node("span","acc-mark","[▪]"),name,node("span","acc-bal",money(r.balanceCents)));
     row.addEventListener("click",()=>openAccount(r.account.id));
     return row;
@@ -274,10 +273,10 @@
   function renderAccounts() {
     const rows = views.accountTotals(state), archived = rows.archived;
     $("accounts-list").replaceChildren(...rows.map(r => accountRow(r, false)));
-    $("accounts-total").textContent = `// итого ${money(views.balances(state).total)}`;
+    $("accounts-total").textContent = t("acc.total",{sum: money(views.balances(state).total)});
     $("archived-line").hidden = !archived.length;
     $("archived-count").textContent = archived.length;
-    $("archived-toggle").textContent = showArchived ? "[скрыть]" : "[показать]";
+    $("archived-toggle").textContent = t(showArchived ? "acc.hide" : "acc.show");
     $("archived-toggle").setAttribute("aria-expanded", String(showArchived));
     $("archived-list").hidden = !archived.length || !showArchived;
     $("archived-list").replaceChildren(...archived.map(r => accountRow(r, true)));
@@ -285,22 +284,22 @@
     $("nav-accounts-count").textContent = rows.length;
     $("nav-accounts").replaceChildren(...rows.map(r => {
       const b = node("button","qv"); b.type = "button"; b.dataset.id = r.account.id;
-      b.append(node("span","qv-name",r.account.name),node("span","qv-count",money(r.balanceCents).replace(" ₽","")));
+      b.append(node("span","qv-name",I.stored(r.account.name)),node("span","qv-count",I.fmtMoney(r.balanceCents,false)));
       b.addEventListener("click",()=>openAccount(r.account.id));
       return b;
     }));
     const a = currentAccount && accById(currentAccount);
     if (a) {
-      $("account-label").textContent = a.name;
+      $("account-label").textContent = I.stored(a.name);
       bigMoney($("account-balance"), views.balances(state).byAccount[a.id]);
-      $("account-meta").textContent = `// ${acct.KIND_LABELS[a.kind]}${a.archived ? " · в архиве" : ""} · начальный остаток ${money(a.openingCents)} на ${dateLabel(a.openingDate)}`;
+      $("account-meta").textContent = t("acc.meta",{kind: I.kindLabel(a.kind), archived: a.archived ? t("acc.metaArchived") : "", opening: money(a.openingCents), date: dateLabel(a.openingDate)});
       $("account-reconcile").hidden = a.archived;
-      $("account-archive").textContent = a.archived ? "[вернуть из архива]" : "[в архив]";
+      $("account-archive").textContent = t(a.archived ? "acc.unarchive" : "acc.archive");
     }
   }
   function fillAccountFilter() {
     const select = $("account-filter"), value = select.value;
-    select.replaceChildren(...[["all","все счета"],...state.accounts.map(a => [a.id, a.archived ? `${a.name} (архив)` : a.name])].map(([v,t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; return o; }));
+    select.replaceChildren(...[["all",t("nav.allAccounts")],...state.accounts.map(a => [a.id, accLabel(a)])].map(([v,t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; return o; }));
     select.value = [...select.options].some(o => o.value === value) ? value : "all";
     select.hidden = state.accounts.length <= 1;
   }
@@ -312,11 +311,12 @@
     document.body.toggleAttribute("data-account",!!currentAccount);
     setNav($("journal-nav"), tab === "journal" && !trash);
     setNav($("trash-nav"), tab === "journal" && trash);
+    setNav($("settings-nav"), tab === "settings");
     setNav($("accounts-nav"), tab === "accounts" && !currentAccount);
     document.querySelectorAll("#nav-accounts .qv").forEach(el => setNav(el, tab === "accounts" && el.dataset.id === currentAccount));
-    $("journal-title").textContent = trash ? "удалённые" : "журнал";
-    $("page-label").textContent = trash ? "удалённые" : tab === "accounts" ? (currentAccount ? accName(currentAccount) : "счета") : {journal: "журнал", plans: "планы", more: "ещё"}[tab];
-    const active = trash ? "more" : tab;
+    $("journal-title").textContent = t(trash ? "nav.trash" : "nav.journal");
+    $("page-label").textContent = trash ? t("nav.trash") : tab === "accounts" ? (currentAccount ? accName(currentAccount) : t("page.accounts")) : t({journal: "nav.journal", plans: "page.plans", more: "page.more", settings: "nav.settings"}[tab]);
+    const active = trash || tab === "settings" ? "more" : tab;
     document.querySelectorAll(".tab").forEach(b=>{
       const on = b.dataset.tab === active;
       b.classList.toggle("active",on);
@@ -351,11 +351,11 @@
   function openAccountForm(id) {
     accountEditing = id;
     const a = id && accById(id);
-    $("account-title").textContent = a ? "изменить счёт" : "новый счёт";
-    $("account-name").value = a ? a.name : "";
+    $("account-title").textContent = t(a ? "acform.edit" : "acform.new");
+    $("account-name").value = a ? I.stored(a.name) : "";
     const kinds = ["debit","cash","savings","credit_card"];
     if (a && !kinds.includes(a.kind)) kinds.push(a.kind);
-    $("account-kind").replaceChildren(...kinds.map(k => { const o = document.createElement("option"); o.value = k; o.textContent = acct.KIND_LABELS[k]; return o; }));
+    $("account-kind").replaceChildren(...kinds.map(k => { const o = document.createElement("option"); o.value = k; o.textContent = I.kindLabel(k); return o; }));
     $("account-kind").value = a ? a.kind : "debit";
     $("account-opening").value = a ? amountInput(a.openingCents) : "";
     $("account-date").value = a ? a.openingDate : today();
@@ -369,12 +369,12 @@
       const raw = $("account-opening").value.trim();
       const openingCents = raw ? M.parseAmount(raw,true) : 0;
       const openingDate = $("account-date").value;
-      if (!M.validDate(openingDate)) throw new Error("Укажите корректную дату.");
+      if (!M.validDate(openingDate)) throw new Error(t("err.date"));
       const data = {name: $("account-name").value, kind: $("account-kind").value, openingCents, openingDate};
       if (accountEditing) commit(acct.updateAccount(state,accountEditing,data));
       else { const id = newId(); commit(acct.addAccount(state,{id,...data})); }
-      closeSheet(); toast(accountEditing ? "Счёт сохранён." : "Счёт добавлен.");
-    } catch(e) { $("account-error").textContent = e.message; }
+      closeSheet(); toast(t(accountEditing ? "msg.accSaved" : "msg.accAdded"));
+    } catch(e) { $("account-error").textContent = I.err(e); }
   });
   function reconInfo() {
     const bankRaw = $("recon-bank").value.trim(), date = $("recon-date").value;
@@ -385,14 +385,14 @@
   }
   function updateRecon() {
     const {calc, diff} = reconInfo();
-    $("recon-calc").textContent = calc === null ? "" : `// по журналу на эту дату: ${money(calc)}`;
-    $("recon-diff").textContent = `// разница: ${diff === null ? "—" : signed(diff)}`;
+    $("recon-calc").textContent = calc === null ? "" : t("recon.calc",{sum: money(calc)});
+    $("recon-diff").textContent = t("recon.diff",{diff: diff === null ? "—" : signed(diff)});
     $("recon-diff").className = `recon-diff${diff === 0 ? " ok" : diff ? " warn" : ""}`;
-    $("recon-save").firstElementChild.textContent = diff === 0 ? "всё сходится" : "записать корректировку";
+    $("recon-save").firstElementChild.textContent = t(diff === 0 ? "recon.match" : "recon.save");
   }
   function openRecon(id) {
     reconAccount = id;
-    $("recon-title").textContent = `сверка · ${accName(id)}`;
+    $("recon-title").textContent = t("recon.titleFor",{name: accName(id)});
     $("recon-bank").value = ""; $("recon-note").value = ""; $("recon-error").textContent = "";
     $("recon-date").value = today(); $("recon-date").max = today();
     updateRecon();
@@ -403,12 +403,12 @@
     event.preventDefault(); $("recon-error").textContent = "";
     try {
       const bank = M.parseAmount($("recon-bank").value,true), date = $("recon-date").value;
-      if (!M.validDate(date)) throw new Error("Укажите корректную дату.");
-      if (date > today()) throw new Error("Сверка возможна на сегодня или раньше.");
+      if (!M.validDate(date)) throw new Error(t("err.date"));
+      if (date > today()) throw new Error(t("err.reconFuture"));
       const res = journal.reconcile(state,reconAccount,bank,date,$("recon-note").value,newId(),new Date().toISOString());
-      if (res.diff === 0) { closeSheet(); toast("Всё сходится, корректировка не нужна."); return; }
-      commit(res.state); closeSheet(); toast(`Корректировка записана: ${signed(res.diff)}.`);
-    } catch(e) { $("recon-error").textContent = e.message; }
+      if (res.diff === 0) { closeSheet(); toast(t("msg.reconMatch")); return; }
+      commit(res.state); closeSheet(); toast(t("msg.reconDone",{diff: signed(res.diff)}));
+    } catch(e) { $("recon-error").textContent = I.err(e); }
   });
   ["recon-bank","recon-date"].forEach(id => $(id).addEventListener("input",updateRecon));
   document.querySelectorAll("[data-sign]").forEach(b=>b.addEventListener("click",()=>{
@@ -423,8 +423,8 @@
   $("account-reconcile").addEventListener("click",()=>openRecon(currentAccount));
   $("account-archive").addEventListener("click",()=>{
     const a = accById(currentAccount); if (!a) return;
-    try { commit(acct.archiveAccount(state,a.id,!a.archived)); toast(a.archived ? "Счёт возвращён из архива." : "Счёт перенесён в архив."); }
-    catch(e) { toast(e.message); }
+    try { commit(acct.archiveAccount(state,a.id,!a.archived)); toast(t(a.archived ? "msg.accUnarchived" : "msg.accArchived")); }
+    catch(e) { toast(I.err(e)); }
   });
   $("account-back").addEventListener("click",()=>showScreen("accounts"));
   $("account-close").addEventListener("click",closeSheet);
@@ -441,16 +441,16 @@
     try {
       const amountCents = M.parseAmount($("amount").value);
       const date = $("date").value;
-      if (!M.validDate(date)) throw new Error("Укажите корректную дату.");
-      if (date > today()) throw new Error("Запишите операцию, когда она произойдёт. Будущие даты пока не поддерживаются.");
+      if (!M.validDate(date)) throw new Error(t("err.date"));
+      if (date > today()) throw new Error(t("err.future"));
       const previous = editing ? state.operations.find(e=>e.id===editing) : null;
-      if (editing && (!previous || previous.deleted)) throw new Error("Запись была удалена. Начните новую запись.");
+      if (editing && (!previous || previous.deleted)) throw new Error(t("err.entryDeleted"));
       const now = new Date().toISOString(), note = $("note").value.trim();
       const accountId = $("account").value, toId = $("account-to").value;
-      if (!accountId) throw new Error("Выберите счёт.");
+      if (!accountId) throw new Error(t("err.pickAccount"));
       let next, done;
       if (mode === "transfer") {
-        if (!toId || accountId === toId) throw new Error("Выберите два разных счёта: «откуда» и «куда».");
+        if (!toId || accountId === toId) throw new Error(t("err.twoAccounts"));
         const legs = [{accountId,amountCents:-amountCents},{accountId:toId,amountCents}];
         if (previous) next = journal.upsertOperation(state,{...previous,type:"transfer",date,note,deleted:false,legs,allocations:[]},now);
         else {
@@ -459,19 +459,19 @@
           const feeRaw = $("fee").value.trim();
           if (feeRaw) next = journal.upsertOperation(next,journal.makeFee({id:newId(),transferId:transfer.id,accountId,amountCents:M.parseAmount(feeRaw),date,now}),now);
         }
-        done = previous ? "Изменения сохранены." : "Перевод записан.";
+        done = t(previous ? "msg.changesSaved" : "msg.transferDone");
       } else {
         const entry = {...previous,id:previous?.id || newId(),type:mode,date,note,createdAt:previous?.createdAt || now,deleted:false,
           legs:[{accountId,amountCents:mode === "income" ? amountCents : -amountCents}],
           allocations:mode === "income" ? [] : [{categoryId:null,amountCents}]};
         next = journal.upsertOperation(state,entry,now);
-        done = previous ? "Изменения сохранены." : mode === "income" ? "Доход записан." : "Расход записан.";
+        done = t(previous ? "msg.changesSaved" : mode === "income" ? "msg.incomeDone" : "msg.expenseDone");
       }
       commit(next);
       toast(done);
       resetForm(!isMobile()); closeSheet();
       if (trash) { trash = false; render(); }
-    } catch(e) { $("form-error").textContent = e.message; }
+    } catch(e) { $("form-error").textContent = I.err(e); }
   });
   document.querySelectorAll("[data-type]").forEach(b=>b.addEventListener("click",()=>setMode(b.dataset.type,editing ? "keep" : "default")));
   document.querySelectorAll("[data-filter]").forEach(b=>b.addEventListener("click",()=>{
@@ -509,7 +509,7 @@
   $("toast-close").addEventListener("click",()=>{$("toast").hidden=true;undoId=null;});
   $("undo-button").addEventListener("click",()=>{
     if (!undoId) return;
-    try {commit(journal.setDeleted(state,undoId,false));toast("Запись возвращена.");} catch(e){toast(e.message);}
+    try {commit(journal.setDeleted(state,undoId,false));toast(t("msg.restoredShort"));} catch(e){toast(I.err(e));}
   });
   function download(text, filename) {
     const url=URL.createObjectURL(new Blob([text],{type:"application/json;charset=utf-8"}));
@@ -519,10 +519,10 @@
   function doExport() {
     try {
       const raw = locked ? (localStorage.getItem(KEY) ?? localStorage.getItem(KEY_V1)) : JSON.stringify({...state,exportedAt:new Date().toISOString()},null,2);
-      if(raw===null) throw new Error("Нет доступных данных для копии.");
+      if(raw===null) throw new Error(t("err.noData"));
       download(raw,`money-log-${today()}${locked ? "-recovery" : ""}.json`);
-      toast("Копия подготовлена для скачивания.");
-    } catch(e){toast(e.message);}
+      toast(t("msg.exported"));
+    } catch(e){toast(I.err(e));}
   }
   const doImport = ()=>{$("import-file").value="";$("import-file").click();};
   $("export-button").addEventListener("click",doExport);
@@ -532,48 +532,93 @@
   $("import-file").addEventListener("change",async()=>{
     const file=$("import-file").files[0];if(!file)return;
     try {
-      if(file.size>25*1024*1024) throw new Error("Копия слишком большая. Максимум — 25 МБ.");
+      if(file.size>25*1024*1024) throw new Error(t("err.tooBig"));
       pendingImport=schema.migrate(JSON.parse(await file.text()),today());
       const merged=journal.merge(state,pendingImport,today());
-      $("import-description").textContent=`В файле ${pendingImport.operations.length} ${countWord(pendingImport.operations.length)}. Будет добавлено: ${merged.added}. Удалённые записи также сохранятся.`;
+      $("import-description").textContent=t("import.desc",{count: tp("journal.count",pendingImport.operations.length), added: merged.added});
       $("import-error").textContent="";
       $("import-dialog").showModal();
-    } catch(e){toast(e instanceof SyntaxError ? "Это не JSON-копия money.log." : e.message);}
+    } catch(e){toast(e instanceof SyntaxError ? t("err.notJson") : I.err(e));}
   });
   $("confirm-import").addEventListener("click",()=>{
     try {
       const merged=journal.merge(state,pendingImport,today());
       commit(merged.state);pendingImport=null;$("import-dialog").close();resetForm();
-      toast(`Копия восстановлена. Добавлено записей: ${merged.added}.`);
-    } catch(e){$("import-error").textContent=e.message;}
+      toast(t("msg.imported",{added: merged.added}));
+    } catch(e){$("import-error").textContent=I.err(e);}
   });
-  function theme(value) {
-    document.documentElement.dataset.theme=value;
-    $("theme-button").textContent=value==="terminal"?"[светлая]":"[тёмная]";
-    $("theme-button").setAttribute("aria-label",value==="terminal"?"Включить светлую тему":"Включить тёмную тему");
-    document.querySelector('meta[name="theme-color"]').content=value==="terminal"?"#0D1117":"#FAFAFA";
+  // ---------- настройки: язык и тема ----------
+  function updateThemeButton() {
+    const dark = boot.resolve().dark;
+    $("theme-button").textContent = t(dark ? "theme.toLight" : "theme.toDark");
+    $("theme-button").setAttribute("aria-label", t(dark ? "theme.toLightAria" : "theme.toDarkAria"));
   }
-  try{theme(localStorage.getItem("money.log.theme")==="paper"?"paper":"terminal");}catch{theme("terminal");}
-  $("theme-button").addEventListener("click",()=>{
-    const value=document.documentElement.dataset.theme==="terminal"?"paper":"terminal";theme(value);
-    try{localStorage.setItem("money.log.theme",value);}catch{toast("Тема применена, но браузер не разрешил её сохранить.");}
-  });
+  function persistNotice(saved) { if (!saved) toast(t("settings.saveFail")); }
+  function themeRow(theme, group) {
+    const selected = settings[group === "dark" ? "darkTheme" : "lightTheme"] === theme.id;
+    const row = node("button",`theme-row${selected ? " selected" : ""}`); row.type = "button";
+    row.setAttribute("aria-pressed",String(selected));
+    const swatches = node("span","swatches");
+    for (const key of ["bg","accent","headers","warn"]) {
+      const sw = node("span","sw"); sw.style.background = theme.c[key]; sw.style.borderColor = theme.c.separator; swatches.append(sw);
+    }
+    row.append(node("span","theme-check","[✓]"),swatches,node("span","theme-name",theme.name));
+    row.addEventListener("click",()=>{
+      const patch = group === "dark" ? {darkTheme: theme.id} : {lightTheme: theme.id};
+      if (settings.themeMode !== "auto") patch.themeMode = group;
+      persistNotice(boot.set(patch));
+    });
+    return row;
+  }
+  function renderSettings() {
+    settings = boot.get();
+    document.querySelectorAll("[data-set-lang]").forEach(b => { const on = b.dataset.setLang === settings.lang; b.classList.toggle("active",on); b.setAttribute("aria-pressed",String(on)); });
+    document.querySelectorAll("[data-set-mode]").forEach(b => { const on = b.dataset.setMode === settings.themeMode; b.classList.toggle("active",on); b.setAttribute("aria-pressed",String(on)); });
+    for (const group of ["dark","light"]) {
+      $(`themes-${group}`).replaceChildren(...boot.themes().filter(x => x.dark === (group === "dark")).map(x => themeRow(x,group)));
+    }
+  }
+  function applyLanguage() {
+    I.setLang(I.resolve(settings.lang));
+    I.applyI18n();
+    $("today-label").textContent = I.fmtDate(new Date(),"short");
+    updateThemeButton();
+    renderSettings();
+    render();
+    if (!$("entry-form").classList.contains("date-open")) updateDateSummary();
+    updateRecon();
+  }
+  boot.onChange(()=>{ updateThemeButton(); renderSettings(); });
+  document.querySelectorAll("[data-set-lang]").forEach(b=>b.addEventListener("click",()=>{
+    persistNotice(boot.set({lang: b.dataset.setLang}));
+    settings = boot.get(); applyLanguage();
+  }));
+  document.querySelectorAll("[data-set-mode]").forEach(b=>b.addEventListener("click",()=>persistNotice(boot.set({themeMode: b.dataset.setMode}))));
+  $("theme-button").addEventListener("click",()=>persistNotice(boot.set({themeMode: boot.resolve().dark ? "light" : "dark"})));
+  $("settings-nav").addEventListener("click",()=>setTab("settings"));
+  $("more-settings").addEventListener("click",()=>setTab("settings"));
+  $("settings-back").addEventListener("click",()=>setTab("more"));
   window.addEventListener("storage",event=>{
     if(event.key!==KEY)return;
     try {
       state=event.newValue===null ? schema.empty(today()) : schema.migrate(JSON.parse(event.newValue),today());
       locked=false;$("storage-error").hidden=true;render();
-      toast("Журнал обновлён в другой вкладке.");
-    } catch {locked=true;storageError("В другой вкладке появились некорректные данные. Запись временно отключена, исходный журнал сохранён.");}
+      toast(t("msg.otherTab"));
+    } catch {locked=true;storageError(t("err.otherTab"));}
   });
   document.addEventListener("keydown",event=>{
     if(event.ctrlKey||event.metaKey||event.altKey||document.querySelector("dialog[open]"))return;
     if(event.key==="Escape"){dismissAny();$("amount").blur();return;}
     if(activeSheet)return;
     if(["INPUT","TEXTAREA","SELECT"].includes(event.target.tagName)||event.target.isContentEditable)return;
-    if(event.key.toLowerCase()==="n"||event.key.toLowerCase()==="т"){event.preventDefault();startNew();}
+    if(event.code==="KeyN"){event.preventDefault();startNew();}
   });
-  $("today-label").textContent=new Intl.DateTimeFormat("ru-RU",{day:"2-digit",month:"short",year:"numeric"}).format(new Date());
-  resetForm();render();
+  window.addEventListener("storage",event=>{
+    if(event.key!==boot.KEY)return;
+    settings=boot.get();
+    if(I.resolve(settings.lang)!==I.getLang())applyLanguage();else renderSettings();
+  });
+  applyLanguage();
+  resetForm();
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
 })();

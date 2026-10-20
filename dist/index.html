@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="ru" data-theme="terminal">
+<html lang="ru">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#0D1117">
-  <meta name="description" content="Личный журнал денег. Записывайте доходы и расходы без лишнего.">
-  <title>money.log — журнал денег</title>
+  <meta name="description" content="" data-i18n-content="app.desc">
+  <title>money.log</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -16,10 +16,15 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="style.css">
+  <script src="themes.js"></script>
+  <script src="boot.js"></script>
+  <script src="i18n.js" defer></script>
   <script src="core/money.js" defer></script>
   <script src="core/schema.js" defer></script>
   <script src="core/accounts.js" defer></script>
+  <script src="core/categories.js" defer></script>
   <script src="core/journal.js" defer></script>
+  <script src="core/suggest.js" defer></script>
   <script src="core/views.js" defer></script>
   <script src="app.js" defer></script>
 </head>
@@ -29,102 +34,106 @@
       <span class="brand-icon" aria-hidden="true"><span class="bi-br">[</span>f<span class="bi-br">]</span></span>
       <span class="brand-name">money.log</span><span class="cursor" aria-hidden="true">▊</span>
     </a>
-    <span class="crumb muted"><span aria-hidden="true">~/</span><span id="page-label">журнал</span></span>
+    <span class="crumb muted"><span aria-hidden="true">~/</span><span id="page-label"></span></span>
     <div class="topbar-right">
       <time id="today-label" class="muted"></time>
-      <button id="theme-button" class="bracket" type="button" aria-label="Включить светлую тему" title="Сменить тему">[светлая]</button>
+      <button id="theme-button" class="bracket" type="button" aria-label="" data-i18n-title="theme.change"></button>
     </div>
   </header>
 
   <div id="storage-error" class="error-banner" role="alert" hidden></div>
 
   <div class="layout">
-    <aside class="nav" aria-label="Меню">
-      <nav class="nav-group" aria-label="Разделы">
-        <div class="nsec"><span>// разделы</span></div>
+    <aside class="nav" data-i18n-aria-label="nav.menu">
+      <nav class="nav-group" data-i18n-aria-label="nav.sectionsAria">
+        <div class="nsec"><span data-i18n="nav.sections"></span></div>
         <button class="qv active" id="journal-nav" type="button" aria-current="page">
           <svg class="ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
-          <span class="qv-name">журнал</span><span class="qv-count" id="nav-count">0</span>
+          <span class="qv-name" data-i18n="nav.journal"></span><span class="qv-count" id="nav-count">0</span>
         </button>
         <button class="qv" id="trash-nav" type="button" aria-current="false">
           <svg class="ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v5M14 11v5"/></svg>
-          <span class="qv-name">удалённые</span><span class="qv-count" id="trash-count">0</span>
+          <span class="qv-name" data-i18n="nav.trash"></span><span class="qv-count" id="trash-count">0</span>
+        </button>
+        <button class="qv" id="settings-nav" type="button" aria-current="false">
+          <svg class="ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
+          <span class="qv-name" data-i18n="nav.settings"></span>
         </button>
       </nav>
       <div class="nav-group nav-accounts">
-        <div class="nsec"><span>// счета</span><button class="bracket" id="nav-add-account" type="button" aria-label="Добавить счёт">[+]</button></div>
+        <div class="nsec"><span data-i18n="nav.accounts"></span><button class="bracket" id="nav-add-account" type="button" data-i18n-aria-label="nav.addAccount">[+]</button></div>
         <div id="nav-accounts"></div>
         <button class="qv" id="accounts-nav" type="button" aria-current="false">
           <svg class="ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg>
-          <span class="qv-name">все счета</span><span class="qv-count" id="nav-accounts-count">0</span>
+          <span class="qv-name" data-i18n="nav.allAccounts"></span><span class="qv-count" id="nav-accounts-count">0</span>
         </button>
       </div>
       <div class="nav-group nav-data">
-        <div class="nsec"><span>// данные</span></div>
+        <div class="nsec"><span data-i18n="nav.data"></span></div>
         <button class="qv" id="export-button" type="button">
           <svg class="ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg>
-          <span class="qv-name">скачать копию</span>
+          <span class="qv-name" data-i18n="nav.export"></span>
         </button>
         <button class="qv" id="import-button" type="button">
           <svg class="ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5M4 21h16"/></svg>
-          <span class="qv-name">восстановить</span>
+          <span class="qv-name" data-i18n="nav.import"></span>
         </button>
         <input id="import-file" type="file" accept=".json,application/json" hidden>
       </div>
-      <p class="nav-note muted">// хранится в этом браузере.<br>// без аккаунта и синхронизации.</p>
+      <p class="nav-note muted" data-i18n-html="nav.note"></p>
     </aside>
 
     <main class="journal">
       <section class="box screen" id="screen-accounts" aria-labelledby="accounts-label">
-        <h2 class="box-label" id="accounts-label">счета</h2>
+        <h2 class="box-label" id="accounts-label" data-i18n="acc.title"></h2>
         <div class="box-body">
           <div id="accounts-list" class="acc-list"></div>
-          <div class="acc-total muted" id="accounts-total">// итого 0,00 ₽</div>
-          <div class="acc-archived muted" id="archived-line" hidden>// в архиве: <span id="archived-count">0</span> <button class="bracket" id="archived-toggle" type="button" aria-expanded="false">[показать]</button></div>
+          <div class="acc-total muted" id="accounts-total"></div>
+          <div class="acc-archived muted" id="archived-line" hidden><span data-i18n="acc.archived"></span> <span id="archived-count">0</span> <button class="bracket" id="archived-toggle" type="button" aria-expanded="false"></button></div>
           <div id="archived-list" class="acc-list" hidden></div>
-          <button type="button" class="btn primary acc-add" id="add-account">+ счёт</button>
+          <button type="button" class="btn primary acc-add" id="add-account" data-i18n="acc.add"></button>
         </div>
       </section>
 
       <section class="box screen" id="screen-account" aria-labelledby="account-label">
-        <h2 class="box-label" id="account-label">счёт</h2>
+        <h2 class="box-label" id="account-label" data-i18n="acc.one"></h2>
         <div class="box-body">
-          <button class="bracket acc-back" id="account-back" type="button">[← назад]</button>
+          <button class="bracket acc-back" id="account-back" type="button" data-i18n="common.back"></button>
           <div class="balance-number" id="account-balance">0<span class="balance-decimals">,00 ₽</span></div>
           <div class="muted" id="account-meta"></div>
           <div class="acc-actions">
-            <button class="bracket" id="account-reconcile" type="button">[сверить с банком]</button>
-            <button class="bracket" id="account-edit" type="button">[изменить]</button>
-            <button class="bracket" id="account-archive" type="button">[в архив]</button>
+            <button class="bracket" id="account-reconcile" type="button" data-i18n="acc.reconcile"></button>
+            <button class="bracket" id="account-edit" type="button" data-i18n="common.edit"></button>
+            <button class="bracket" id="account-archive" type="button"></button>
           </div>
         </div>
       </section>
 
       <div class="quick-actions s-journal" id="quick-actions">
-        <button type="button" class="btn primary" id="add-income" data-new="income">+ пришло</button>
-        <button type="button" class="btn ghost" id="add-expense" data-new="expense">− ушло</button>
-        <button type="button" class="btn ghost" id="add-transfer" data-new="transfer">⇄ перевёл</button>
+        <button type="button" class="btn primary" id="add-income" data-new="income" data-i18n="quick.income"></button>
+        <button type="button" class="btn ghost" id="add-expense" data-new="expense" data-i18n="quick.expense"></button>
+        <button type="button" class="btn ghost" id="add-transfer" data-new="transfer" data-i18n="quick.transfer"></button>
       </div>
       <section class="box s-journal" id="journal-box" aria-labelledby="journal-title">
-        <h2 class="box-label" id="journal-title">журнал</h2>
+        <h2 class="box-label" id="journal-title"></h2>
         <div class="box-body">
           <div class="ihead">
             <svg class="ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
-            <span>записи</span><span id="entry-count" class="count">0 записей</span>
-            <button class="bracket trash-back" id="trash-back" type="button" aria-label="Назад к списку «ещё»">[← назад]</button>
+            <span data-i18n="journal.entries"></span><span id="entry-count" class="count"></span>
+            <button class="bracket trash-back" id="trash-back" type="button" data-i18n-aria-label="trash.backAria" data-i18n="common.back"></button>
           </div>
           <div class="journal-tools">
-            <div class="filters" role="group" aria-label="Тип операций">
-              <button class="filter active" type="button" data-filter="all" aria-pressed="true">[ все ]</button>
-              <button class="filter" type="button" data-filter="expense" aria-pressed="false">[ расходы ]</button>
-              <button class="filter" type="button" data-filter="income" aria-pressed="false">[ доходы ]</button>
-              <button class="filter" type="button" data-filter="transfer" aria-pressed="false">[ переводы ]</button>
+            <div class="filters" role="group" data-i18n-aria-label="filter.aria">
+              <button class="filter active" type="button" data-filter="all" aria-pressed="true" data-i18n="filter.all"></button>
+              <button class="filter" type="button" data-filter="expense" aria-pressed="false" data-i18n="filter.expense"></button>
+              <button class="filter" type="button" data-filter="income" aria-pressed="false" data-i18n="filter.income"></button>
+              <button class="filter" type="button" data-filter="transfer" aria-pressed="false" data-i18n="filter.transfer"></button>
             </div>
-            <select id="account-filter" class="account-filter" aria-label="Фильтр по счёту"><option value="all">все счета</option></select>
-            <button class="search-toggle" id="search-toggle" type="button" aria-label="Поиск" aria-expanded="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></button>
+            <select id="account-filter" class="account-filter" data-i18n-aria-label="filter.account"></select>
+            <button class="search-toggle" id="search-toggle" type="button" data-i18n-aria-label="search.toggle" aria-expanded="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></button>
             <label class="search-box">
               <svg class="ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-              <input id="search" type="search" placeholder="найти запись…" aria-label="Найти запись" autocomplete="off">
+              <input id="search" type="search" data-i18n-placeholder="search.placeholder" data-i18n-aria-label="search.aria" autocomplete="off">
             </label>
           </div>
           <div id="entries"></div>
@@ -132,27 +141,61 @@
       </section>
 
       <section class="box screen" id="screen-plans" aria-labelledby="plans-label">
-        <h2 class="box-label" id="plans-label">планы</h2>
-        <div class="box-body"><div class="log-line"><span class="tag warn">[--]</span><span class="log-name">появится на этапе 4</span></div></div>
+        <h2 class="box-label" id="plans-label" data-i18n="plans.title"></h2>
+        <div class="box-body"><div class="log-line"><span class="tag warn">[--]</span><span class="log-name" data-i18n="plans.soon"></span></div></div>
       </section>
 
+      <div class="screen" id="screen-settings">
+        <button class="bracket acc-back settings-back" id="settings-back" type="button" data-i18n="common.back"></button>
+        <section class="box" aria-labelledby="settings-lang-label">
+          <h2 class="box-label" id="settings-lang-label" data-i18n="settings.lang"></h2>
+          <div class="box-body">
+            <div class="filters" role="group" data-i18n-aria-label="settings.langAria">
+              <button class="filter" type="button" data-set-lang="auto" aria-pressed="false" data-i18n="settings.auto"></button>
+              <button class="filter" type="button" data-set-lang="ru" aria-pressed="false" data-i18n="settings.ru"></button>
+              <button class="filter" type="button" data-set-lang="en" aria-pressed="false" data-i18n="settings.en"></button>
+            </div>
+          </div>
+        </section>
+        <section class="box" aria-labelledby="settings-theme-label">
+          <h2 class="box-label" id="settings-theme-label" data-i18n="settings.theme"></h2>
+          <div class="box-body">
+            <div class="filters" role="group" data-i18n-aria-label="settings.modeAria">
+              <button class="filter" type="button" data-set-mode="auto" aria-pressed="false" data-i18n="settings.auto"></button>
+              <button class="filter" type="button" data-set-mode="dark" aria-pressed="false" data-i18n="settings.dark"></button>
+              <button class="filter" type="button" data-set-mode="light" aria-pressed="false" data-i18n="settings.light"></button>
+            </div>
+            <div class="muted set-list-title" data-i18n="settings.darkList"></div>
+            <div class="theme-list" id="themes-dark"></div>
+            <div class="muted set-list-title" data-i18n="settings.lightList"></div>
+            <div class="theme-list" id="themes-light"></div>
+          </div>
+        </section>
+      </div>
+
       <div class="screen" id="screen-more">
-        <section class="box" aria-labelledby="data-label">
-          <h2 class="box-label" id="data-label">данные</h2>
+        <section class="box" aria-labelledby="more-settings-label">
+          <h2 class="box-label" id="more-settings-label" data-i18n="nav.settings"></h2>
           <div class="box-body more-list">
-            <button class="bracket more-btn" id="more-export" type="button">[↓ скачать копию]</button>
-            <button class="bracket more-btn" id="more-import" type="button">[↑ восстановить копию]</button>
-            <p class="muted">// хранится на этом устройстве</p>
+            <button class="bracket more-btn" id="more-settings" type="button" data-i18n="more.openSettings"></button>
+          </div>
+        </section>
+        <section class="box" aria-labelledby="data-label">
+          <h2 class="box-label" id="data-label" data-i18n="more.data"></h2>
+          <div class="box-body more-list">
+            <button class="bracket more-btn" id="more-export" type="button" data-i18n="more.export"></button>
+            <button class="bracket more-btn" id="more-import" type="button" data-i18n="more.import"></button>
+            <p class="muted" data-i18n="more.local"></p>
           </div>
         </section>
         <section class="box" aria-labelledby="trash-label">
-          <h2 class="box-label" id="trash-label">удалённые</h2>
+          <h2 class="box-label" id="trash-label" data-i18n="nav.trash"></h2>
           <div class="box-body more-list">
-            <button class="bracket more-btn" id="more-trash" type="button">[открыть список] <span id="more-trash-count">0</span></button>
+            <button class="bracket more-btn" id="more-trash" type="button"><span data-i18n="more.open"></span> <span id="more-trash-count">0</span></button>
           </div>
         </section>
         <section class="box" aria-labelledby="about-label">
-          <h2 class="box-label" id="about-label">о приложении</h2>
+          <h2 class="box-label" id="about-label" data-i18n="more.about"></h2>
           <div class="box-body more-list"><p>money.log v0.2</p></div>
         </section>
       </div>
@@ -160,45 +203,45 @@
 
     <div class="side">
       <section class="box s-journal" id="balance-box" aria-labelledby="balance-label">
-        <h2 class="box-label" id="balance-label">остаток</h2>
+        <h2 class="box-label" id="balance-label" data-i18n="balance.title"></h2>
         <div class="box-body">
           <div class="balance-number" id="balance">0<span class="balance-decimals">,00 ₽</span></div>
           <div class="log-lines">
-            <div class="log-line"><span class="tag ok">[ok]</span><span class="log-name">доходы</span><strong class="income" id="income-total">+0,00 ₽</strong></div>
-            <div class="log-line"><span class="tag warn">[--]</span><span class="log-name">расходы</span><strong id="expense-total">−0,00 ₽</strong></div>
+            <div class="log-line"><span class="tag ok">[ok]</span><span class="log-name" data-i18n="balance.income"></span><strong class="income" id="income-total">+0,00 ₽</strong></div>
+            <div class="log-line"><span class="tag warn">[--]</span><span class="log-name" data-i18n="balance.expense"></span><strong id="expense-total">−0,00 ₽</strong></div>
           </div>
-          <div class="muted opening-line">// счетов: <span id="accounts-count">1</span> <button class="bracket" id="accounts-link" type="button" aria-label="Открыть список счетов">[счета]</button></div>
-          <div class="muted opening-line">// за всё время, без удалённых</div>
+          <div class="muted opening-line"><span data-i18n="balance.accounts"></span> <span id="accounts-count">1</span> <button class="bracket" id="accounts-link" type="button" data-i18n-aria-label="balance.accountsAria" data-i18n="balance.accountsLink"></button></div>
+          <div class="muted opening-line" data-i18n="balance.note"></div>
         </div>
       </section>
 
       <section class="box" id="entry-box" aria-labelledby="form-title">
-        <h2 class="box-label" id="form-title">новая запись</h2>
-        <button type="button" class="bracket sheet-close" id="sheet-close" aria-label="Закрыть форму">[×]</button>
+        <h2 class="box-label" id="form-title"></h2>
+        <button type="button" class="bracket sheet-close" id="sheet-close" data-i18n-aria-label="form.closeAria">[×]</button>
         <div class="box-body">
           <form id="entry-form" novalidate>
-            <div class="type-switch" role="group" aria-label="Тип новой записи">
-              <button type="button" data-type="expense" class="selected" aria-pressed="true">[ расход ]</button>
-              <button type="button" data-type="income" aria-pressed="false">[ доход ]</button>
-              <button type="button" data-type="transfer" aria-pressed="false" id="transfer-switch">[ перевод ]</button>
+            <div class="type-switch" role="group" data-i18n-aria-label="form.typeAria">
+              <button type="button" data-type="expense" class="selected" aria-pressed="true" data-i18n="form.typeExpense"></button>
+              <button type="button" data-type="income" aria-pressed="false" data-i18n="form.typeIncome"></button>
+              <button type="button" data-type="transfer" aria-pressed="false" id="transfer-switch" data-i18n="form.typeTransfer"></button>
             </div>
-            <label class="field-label" for="amount">сумма</label>
-            <div class="amount-field"><input id="amount" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off" required maxlength="20"><span aria-hidden="true">₽</span></div>
-            <div id="account-field"><label class="field-label" for="account" id="account-select-label">откуда</label><select id="account"></select></div>
-            <div id="to-field" hidden><label class="field-label" for="account-to">куда</label><select id="account-to"></select></div>
-            <div id="fee-field" hidden><label class="field-label" for="fee">комиссия <span class="muted">// необязательно</span></label><div class="amount-field"><input id="fee" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off" maxlength="20"><span aria-hidden="true">₽</span></div></div>
-            <label class="field-label" for="note">заметка <span class="muted">// необязательно</span></label>
-            <input id="note" type="text" placeholder="Например, кофе по дороге" maxlength="160" autocomplete="off">
-            <div class="date-row muted" id="date-row">// дата: <span id="date-summary">сегодня</span> <button class="bracket" id="date-toggle" type="button">[изменить]</button></div>
+            <label class="field-label" for="amount" data-i18n="form.amount"></label>
+            <div class="amount-field"><input id="amount" type="text" inputmode="decimal" data-i18n-placeholder="amount.ph" autocomplete="off" required maxlength="20"><span aria-hidden="true">₽</span></div>
+            <div id="account-field"><label class="field-label" for="account" id="account-select-label"></label><select id="account"></select></div>
+            <div id="to-field" hidden><label class="field-label" for="account-to" data-i18n="form.to"></label><select id="account-to"></select></div>
+            <div id="fee-field" hidden><label class="field-label" for="fee"><span data-i18n="form.fee"></span> <span class="muted" data-i18n="common.optional"></span></label><div class="amount-field"><input id="fee" type="text" inputmode="decimal" data-i18n-placeholder="amount.ph" autocomplete="off" maxlength="20"><span aria-hidden="true">₽</span></div></div>
+            <label class="field-label" for="note"><span data-i18n="form.note"></span> <span class="muted" data-i18n="common.optional"></span></label>
+            <input id="note" type="text" maxlength="160" autocomplete="off">
+            <div class="date-row muted" id="date-row"><span data-i18n="form.dateRow"></span> <span id="date-summary"></span> <button class="bracket" id="date-toggle" type="button" data-i18n="common.edit"></button></div>
             <div id="date-field">
-              <label class="field-label" for="date">дата</label>
+              <label class="field-label" for="date" data-i18n="form.date"></label>
               <input id="date" type="date" required>
             </div>
             <div id="form-error" class="form-error" role="alert"></div>
-            <button type="submit" class="btn primary" id="save-button"><span>Записать расход</span><span aria-hidden="true">↵</span></button>
-            <button type="button" class="btn ghost" id="cancel-edit" hidden>Отменить изменение</button>
-            <button type="button" class="bracket" id="delete-entry" hidden>[удалить запись]</button>
-            <p class="muted form-hint" id="form-hint">// <kbd>N</kbd> новая запись · <kbd>Esc</kbd> отмена</p>
+            <button type="submit" class="btn primary" id="save-button"><span></span><span aria-hidden="true">↵</span></button>
+            <button type="button" class="btn ghost" id="cancel-edit" hidden data-i18n="form.cancelEdit"></button>
+            <button type="button" class="bracket" id="delete-entry" hidden data-i18n="form.delete"></button>
+            <p class="muted form-hint" id="form-hint" data-i18n-html="form.hint"></p>
           </form>
         </div>
       </section>
@@ -207,65 +250,65 @@
 
   <div id="sheet-backdrop" class="sheet-backdrop" hidden></div>
 
-  <nav class="tabbar" id="tabbar" aria-label="Вкладки">
-    <button type="button" class="tab active" data-tab="journal" aria-current="page"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg><span>журнал</span></button>
-    <button type="button" class="tab" data-tab="accounts" aria-current="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg><span>счета</span></button>
-    <button type="button" class="tab" data-tab="plans" aria-current="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg><span>планы</span></button>
-    <button type="button" class="tab" data-tab="more" aria-current="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg><span>ещё</span></button>
+  <nav class="tabbar" id="tabbar" data-i18n-aria-label="tab.aria">
+    <button type="button" class="tab active" data-tab="journal" aria-current="page"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg><span data-i18n="nav.journal"></span></button>
+    <button type="button" class="tab" data-tab="accounts" aria-current="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg><span data-i18n="page.accounts"></span></button>
+    <button type="button" class="tab" data-tab="plans" aria-current="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg><span data-i18n="page.plans"></span></button>
+    <button type="button" class="tab" data-tab="more" aria-current="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg><span data-i18n="page.more"></span></button>
   </nav>
 
-  <div id="toast" class="toast" role="status" hidden><span class="toast-text" id="toast-message"></span><button id="undo-button" class="bracket accent-hover" type="button" hidden>[вернуть]</button><button id="toast-close" class="bracket" type="button" aria-label="Закрыть уведомление">[×]</button></div>
+  <div id="toast" class="toast" role="status" hidden><span class="toast-text" id="toast-message"></span><button id="undo-button" class="bracket accent-hover" type="button" hidden data-i18n="toast.undo"></button><button id="toast-close" class="bracket" type="button" data-i18n-aria-label="toast.closeAria">[×]</button></div>
 
   <section class="box sheet-form" id="account-box" role="dialog" aria-modal="true" aria-labelledby="account-title">
-    <h2 class="box-label" id="account-title">новый счёт</h2>
-    <button type="button" class="bracket sheet-x" id="account-close" aria-label="Закрыть">[×]</button>
+    <h2 class="box-label" id="account-title"></h2>
+    <button type="button" class="bracket sheet-x" id="account-close" data-i18n-aria-label="common.close">[×]</button>
     <div class="box-body">
       <form id="account-form" novalidate>
-        <label class="field-label first" for="account-name">название</label>
-        <input id="account-name" type="text" maxlength="100" autocomplete="off" placeholder="Например, Сбер">
-        <label class="field-label" for="account-kind">вид</label>
+        <label class="field-label first" for="account-name" data-i18n="acform.name"></label>
+        <input id="account-name" type="text" maxlength="100" autocomplete="off" data-i18n-placeholder="acform.namePh">
+        <label class="field-label" for="account-kind" data-i18n="acform.kind"></label>
         <select id="account-kind"></select>
-        <label class="field-label" for="account-opening">начальный остаток</label>
-        <div class="amount-field"><input id="account-opening" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off" maxlength="21"><span aria-hidden="true">₽</span></div>
-        <button type="button" class="bracket sign-btn" data-sign="account-opening">[± минус]</button>
-        <label class="field-label" for="account-date">дата начального остатка</label>
+        <label class="field-label" for="account-opening" data-i18n="acform.opening"></label>
+        <div class="amount-field"><input id="account-opening" type="text" inputmode="decimal" data-i18n-placeholder="amount.ph" autocomplete="off" maxlength="21"><span aria-hidden="true">₽</span></div>
+        <button type="button" class="bracket sign-btn" data-sign="account-opening" data-i18n="acform.minus"></button>
+        <label class="field-label" for="account-date" data-i18n="acform.date"></label>
         <input id="account-date" type="date" required>
         <div id="account-error" class="form-error" role="alert"></div>
-        <button type="submit" class="btn primary" id="account-save"><span>Сохранить</span><span aria-hidden="true">↵</span></button>
+        <button type="submit" class="btn primary" id="account-save"><span data-i18n="acform.save"></span><span aria-hidden="true">↵</span></button>
       </form>
     </div>
   </section>
 
   <section class="box sheet-form" id="recon-box" role="dialog" aria-modal="true" aria-labelledby="recon-title">
-    <h2 class="box-label" id="recon-title">сверка</h2>
-    <button type="button" class="bracket sheet-x" id="recon-close" aria-label="Закрыть">[×]</button>
+    <h2 class="box-label" id="recon-title"></h2>
+    <button type="button" class="bracket sheet-x" id="recon-close" data-i18n-aria-label="common.close">[×]</button>
     <div class="box-body">
       <form id="recon-form" novalidate>
-        <label class="field-label first" for="recon-bank">сколько показывает банк?</label>
-        <div class="amount-field"><input id="recon-bank" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off" maxlength="21"><span aria-hidden="true">₽</span></div>
-        <button type="button" class="bracket sign-btn" data-sign="recon-bank">[± минус]</button>
-        <label class="field-label" for="recon-date">на дату</label>
+        <label class="field-label first" for="recon-bank" data-i18n="recon.bank"></label>
+        <div class="amount-field"><input id="recon-bank" type="text" inputmode="decimal" data-i18n-placeholder="amount.ph" autocomplete="off" maxlength="21"><span aria-hidden="true">₽</span></div>
+        <button type="button" class="bracket sign-btn" data-sign="recon-bank" data-i18n="acform.minus"></button>
+        <label class="field-label" for="recon-date" data-i18n="recon.date"></label>
         <input id="recon-date" type="date" required>
-        <label class="field-label" for="recon-note">пояснение <span class="muted">// необязательно</span></label>
-        <input id="recon-note" type="text" maxlength="160" autocomplete="off" placeholder="Сверка с банком">
+        <label class="field-label" for="recon-note"><span data-i18n="recon.note"></span> <span class="muted" data-i18n="common.optional"></span></label>
+        <input id="recon-note" type="text" maxlength="160" autocomplete="off" data-i18n-placeholder="recon.notePh">
         <div class="muted recon-line" id="recon-calc"></div>
-        <div class="recon-diff" id="recon-diff">// разница: —</div>
+        <div class="recon-diff" id="recon-diff"></div>
         <div id="recon-error" class="form-error" role="alert"></div>
-        <button type="submit" class="btn primary" id="recon-save"><span>записать корректировку</span><span aria-hidden="true">↵</span></button>
+        <button type="submit" class="btn primary" id="recon-save"><span></span><span aria-hidden="true">↵</span></button>
       </form>
     </div>
   </section>
 
   <dialog id="import-dialog" aria-labelledby="import-title">
-    <h2 class="box-label" id="import-title">восстановить копию</h2>
-    <button type="button" data-close="import-dialog" class="bracket dialog-close" aria-label="Закрыть">[×]</button>
+    <h2 class="box-label" id="import-title" data-i18n="import.title"></h2>
+    <button type="button" data-close="import-dialog" class="bracket dialog-close" data-i18n-aria-label="common.close">[×]</button>
     <div class="dialog-body">
       <p id="import-description"></p>
-      <p class="muted">// совпадающие записи будут пропущены. Текущий начальный остаток сохранится, если в журнале уже есть данные.</p>
+      <p class="muted" data-i18n="import.note"></p>
       <div id="import-error" class="form-error" role="alert"></div>
-      <button class="btn primary" id="confirm-import" type="button"><span>Добавить записи из копии</span><span aria-hidden="true">↑</span></button>
+      <button class="btn primary" id="confirm-import" type="button"><span data-i18n="import.confirm"></span><span aria-hidden="true">↑</span></button>
     </div>
   </dialog>
-  <noscript><div class="error-banner">Для работы журнала включите JavaScript в браузере.</div></noscript>
+  <noscript><div class="error-banner">enable javascript to use money.log.</div></noscript>
 </body>
 </html>

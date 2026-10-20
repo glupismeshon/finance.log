@@ -1,14 +1,19 @@
 "use strict";
-const CACHE = "money-log-v9";
+const CACHE = "money-log-v10";
 const ASSETS = [
   "./",
   "index.html",
   "style.css",
   "app.js",
+  "i18n.js",
+  "themes.js",
+  "boot.js",
   "core/money.js",
   "core/schema.js",
   "core/accounts.js",
+  "core/categories.js",
   "core/journal.js",
+  "core/suggest.js",
   "core/views.js",
   "icon.svg",
   "manifest.webmanifest",
