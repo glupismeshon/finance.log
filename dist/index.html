@@ -2,7 +2,7 @@
 <html lang="ru" data-theme="terminal">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#0D1117">
   <meta name="description" content="Личный журнал денег. Записывайте доходы и расходы без лишнего.">
   <title>money.log — журнал денег</title>
@@ -22,7 +22,7 @@
   <script src="core/views.js" defer></script>
   <script src="app.js" defer></script>
 </head>
-<body>
+<body data-tab="journal">
   <header class="topbar">
     <a class="brand" href="./" aria-label="money.log">
       <span class="brand-icon" aria-hidden="true"><span class="bi-br">[</span>f<span class="bi-br">]</span></span>
@@ -66,12 +66,17 @@
     </aside>
 
     <main class="journal">
-      <section class="box" aria-labelledby="journal-title">
+      <div class="quick-actions s-journal" id="quick-actions">
+        <button type="button" class="btn primary" id="add-income" data-new="income">+ пришло</button>
+        <button type="button" class="btn ghost" id="add-expense" data-new="expense">− ушло</button>
+      </div>
+      <section class="box s-journal" id="journal-box" aria-labelledby="journal-title">
         <h2 class="box-label" id="journal-title">журнал</h2>
         <div class="box-body">
           <div class="ihead">
             <svg class="ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
             <span>записи</span><span id="entry-count" class="count">0 записей</span>
+            <button class="bracket trash-back" id="trash-back" type="button" aria-label="Назад к списку «ещё»">[← назад]</button>
           </div>
           <div class="journal-tools">
             <div class="filters" role="group" aria-label="Тип операций">
@@ -79,6 +84,7 @@
               <button class="filter" type="button" data-filter="expense" aria-pressed="false">[ расходы ]</button>
               <button class="filter" type="button" data-filter="income" aria-pressed="false">[ доходы ]</button>
             </div>
+            <button class="search-toggle" id="search-toggle" type="button" aria-label="Поиск" aria-expanded="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></button>
             <label class="search-box">
               <svg class="ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
               <input id="search" type="search" placeholder="найти запись…" aria-label="Найти запись" autocomplete="off">
@@ -87,10 +93,41 @@
           <div id="entries"></div>
         </div>
       </section>
+
+      <section class="box screen" id="screen-accounts" aria-labelledby="accounts-label">
+        <h2 class="box-label" id="accounts-label">счета</h2>
+        <div class="box-body"><div class="log-line"><span class="tag warn">[--]</span><span class="log-name">появится на этапе 1</span></div></div>
+      </section>
+
+      <section class="box screen" id="screen-plans" aria-labelledby="plans-label">
+        <h2 class="box-label" id="plans-label">планы</h2>
+        <div class="box-body"><div class="log-line"><span class="tag warn">[--]</span><span class="log-name">появится на этапе 4</span></div></div>
+      </section>
+
+      <div class="screen" id="screen-more">
+        <section class="box" aria-labelledby="data-label">
+          <h2 class="box-label" id="data-label">данные</h2>
+          <div class="box-body more-list">
+            <button class="bracket more-btn" id="more-export" type="button">[↓ скачать копию]</button>
+            <button class="bracket more-btn" id="more-import" type="button">[↑ восстановить копию]</button>
+            <p class="muted">// хранится на этом устройстве</p>
+          </div>
+        </section>
+        <section class="box" aria-labelledby="trash-label">
+          <h2 class="box-label" id="trash-label">удалённые</h2>
+          <div class="box-body more-list">
+            <button class="bracket more-btn" id="more-trash" type="button">[открыть список] <span id="more-trash-count">0</span></button>
+          </div>
+        </section>
+        <section class="box" aria-labelledby="about-label">
+          <h2 class="box-label" id="about-label">о приложении</h2>
+          <div class="box-body more-list"><p>money.log v0.2</p></div>
+        </section>
+      </div>
     </main>
 
     <div class="side">
-      <section class="box" aria-labelledby="balance-label">
+      <section class="box s-journal" id="balance-box" aria-labelledby="balance-label">
         <h2 class="box-label" id="balance-label">остаток</h2>
         <div class="box-body">
           <div class="balance-number" id="balance">0<span class="balance-decimals">,00 ₽</span></div>
@@ -103,8 +140,9 @@
         </div>
       </section>
 
-      <section class="box" aria-labelledby="form-title">
+      <section class="box" id="entry-box" aria-labelledby="form-title">
         <h2 class="box-label" id="form-title">новая запись</h2>
+        <button type="button" class="bracket sheet-close" id="sheet-close" aria-label="Закрыть форму">[×]</button>
         <div class="box-body">
           <form id="entry-form" novalidate>
             <div class="type-switch" role="group" aria-label="Тип новой записи">
@@ -115,17 +153,30 @@
             <div class="amount-field"><input id="amount" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off" required maxlength="20"><span aria-hidden="true">₽</span></div>
             <label class="field-label" for="note">заметка <span class="muted">// необязательно</span></label>
             <input id="note" type="text" placeholder="Например, кофе по дороге" maxlength="160" autocomplete="off">
-            <label class="field-label" for="date">дата</label>
-            <input id="date" type="date" required>
+            <div class="date-row muted" id="date-row">// дата: <span id="date-summary">сегодня</span> <button class="bracket" id="date-toggle" type="button">[изменить]</button></div>
+            <div id="date-field">
+              <label class="field-label" for="date">дата</label>
+              <input id="date" type="date" required>
+            </div>
             <div id="form-error" class="form-error" role="alert"></div>
             <button type="submit" class="btn primary" id="save-button"><span>Записать расход</span><span aria-hidden="true">↵</span></button>
             <button type="button" class="btn ghost" id="cancel-edit" hidden>Отменить изменение</button>
-            <p class="muted form-hint">// <kbd>N</kbd> новая запись · <kbd>Esc</kbd> отмена</p>
+            <button type="button" class="bracket" id="delete-entry" hidden>[удалить запись]</button>
+            <p class="muted form-hint" id="form-hint">// <kbd>N</kbd> новая запись · <kbd>Esc</kbd> отмена</p>
           </form>
         </div>
       </section>
     </div>
   </div>
+
+  <div id="sheet-backdrop" class="sheet-backdrop" hidden></div>
+
+  <nav class="tabbar" id="tabbar" aria-label="Вкладки">
+    <button type="button" class="tab active" data-tab="journal" aria-current="page"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg><span>журнал</span></button>
+    <button type="button" class="tab" data-tab="accounts" aria-current="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg><span>счета</span></button>
+    <button type="button" class="tab" data-tab="plans" aria-current="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg><span>планы</span></button>
+    <button type="button" class="tab" data-tab="more" aria-current="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg><span>ещё</span></button>
+  </nav>
 
   <div id="toast" class="toast" role="status" hidden><span class="toast-text" id="toast-message"></span><button id="undo-button" class="bracket accent-hover" type="button" hidden>[вернуть]</button><button id="toast-close" class="bracket" type="button" aria-label="Закрыть уведомление">[×]</button></div>
 

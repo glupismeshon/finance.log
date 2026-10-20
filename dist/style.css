@@ -87,7 +87,11 @@ input[type="text"], input[type="search"], input[type="date"] {
 }
 input:focus { border-color: var(--accent-dim); }
 input::placeholder { color: var(--muted); }
-input[type="date"] { min-height: 38px; }
+input[type="date"] {
+  min-height: 38px; -webkit-appearance: none; appearance: none; display: block;
+  max-width: 100%; text-align: left;
+}
+input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 input[type="search"]::-webkit-search-cancel-button { filter: grayscale(1); }
 .field-label { display: block; margin: 14px 0 6px; color: var(--muted); font-size: 12.5px; }
 .amount-field { position: relative; }
@@ -200,7 +204,14 @@ strong.income { color: var(--accent); }
 #save-button { width: 100%; margin-top: 16px; }
 #cancel-edit { width: 100%; margin-top: 8px; }
 #cancel-edit[hidden] { display: none; }
+#delete-entry { display: block; width: 100%; margin-top: 12px; text-align: center; color: var(--over); }
+#delete-entry:hover, #delete-entry:focus-visible { color: var(--over); text-decoration: underline; }
+#delete-entry[hidden] { display: none; }
 .form-hint { margin-top: 14px; }
+
+/* ---------- Мобильные элементы (на десктопе скрыты) ---------- */
+.quick-actions, .tabbar, .sheet-backdrop, .search-toggle, .sheet-close, .date-row, .trash-back, .screen { display: none; }
+#date-field { display: block; }
 
 /* ---------- Тост ---------- */
 .toast {
@@ -244,18 +255,114 @@ dialog .btn { width: 100%; margin-top: 16px; }
   .nav-data { margin-left: auto; }
 }
 
-/* ---------- Телефон: одна колонка, остаток -> новая запись -> журнал ---------- */
+/* ---------- Телефон: вкладки, шторка ---------- */
 @media (max-width: 599px) {
+  :root { --topbar-h: 44px; --tabbar-h: 56px; }
+  .topbar { padding-left: max(16px, env(safe-area-inset-left)); gap: 12px; }
+  .topbar-right time, .crumb { display: none; }
+  .topbar .bracket { min-height: 44px; padding: 0 4px; }
+
+  .nav { display: none; }
   .layout {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "nav" "side" "journal";
-    padding: 20px 16px 32px; gap: 24px;
+    display: flex; flex-direction: column; gap: 20px;
+    padding: 20px 16px calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 24px);
   }
-  .side { position: static; gap: 24px; }
-  .box-body { padding: 22px 16px 16px; }
-  .crumb { display: none; }
-  .nav-data { margin-left: 0; width: 100%; }
-  .balance-number { font-size: 28px; }
+  .side { display: contents; }
+  #balance-box { order: 1; }
+  .journal { order: 2; display: flex; flex-direction: column; gap: 20px; }
+  .box-body { padding: 20px 16px 14px; }
+  .balance-number { font-size: 34px; }
+  .log-lines { margin-top: 10px; }
+  .opening-line .bracket { padding: 13px 6px; margin: -13px 0; }
+
+  /* экраны по вкладкам */
+  body:not([data-tab="journal"]) .s-journal { display: none; }
+  body[data-trash] #balance-box, body[data-trash] #quick-actions { display: none; }
+  body[data-tab="accounts"] #screen-accounts, body[data-tab="plans"] #screen-plans { display: block; }
+  body[data-tab="more"] #screen-more { display: grid; gap: 20px; }
+  .more-list { display: grid; gap: 4px; }
+  .more-btn { min-height: 44px; text-align: left; font-size: 13px; color: var(--text); }
+  .more-btn:hover, .more-btn:focus-visible { color: var(--accent); }
+  .trash-back { display: inline-block; margin-left: auto; min-height: 44px; padding: 0 4px; }
+  body:not([data-trash]) .trash-back { display: none; }
+
+  /* кнопки пришло / ушло */
+  .quick-actions { display: flex; gap: 12px; }
+  .quick-actions .btn { flex: 1; height: 52px; font-size: 14px; }
+  .quick-actions .btn.ghost { color: var(--text); }
+
+  /* фильтры и поиск */
+  .journal-tools { flex-wrap: wrap; flex-direction: row; gap: 6px 8px; margin-top: 8px; }
+  .filters { flex: 1 1 0; min-width: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .filters::-webkit-scrollbar { display: none; }
+  .filter { white-space: nowrap; min-height: 44px; padding: 0 10px; }
+  .search-toggle {
+    display: inline-flex; align-items: center; justify-content: center; flex: none;
+    width: 44px; height: 44px; background: none; border: 0; border-radius: 4px; color: var(--muted);
+  }
+  .search-toggle[aria-expanded="true"] { color: var(--accent); background: var(--panel); }
+  .search-box { display: none; flex: 1 0 100%; }
+  .journal-tools.search-open .search-box { display: flex; }
+  .search-box input { min-height: 44px; font-size: 16px; }
+  .row-actions { gap: 4px; }
+  .row-actions .bracket { padding: 12px 8px 12px 0; }
+  .todo { padding: 6px 6px 0 0; }
+  /* строка операции открывает правку; кнопки изменить/удалить скрыты (в удалённых остаётся «вернуть») */
+  body:not([data-trash]) .row-actions { display: none; }
+  body:not([data-trash]) .todo { cursor: pointer; }
+  body:not([data-trash]) .todo:active { background: var(--panel); }
+
+  /* таб-бар */
+  .tabbar {
+    display: flex; position: fixed; z-index: 30; left: 0; right: 0; bottom: 0;
+    height: calc(var(--tabbar-h) + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom);
+    background: var(--bg); border-top: 1px solid var(--border);
+  }
+  .tab {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    background: none; border: 0; color: var(--muted); font-size: 11px; line-height: 1.2; min-height: 44px;
+  }
+  .tab.active { color: var(--accent); }
+
+  .toast { bottom: calc(var(--tabbar-h) + 12px + env(safe-area-inset-bottom)); }
+
+  /* форма-шторка */
+  .sheet-backdrop { display: block; position: fixed; inset: 0; z-index: 45; background: var(--backdrop); }
+  .sheet-backdrop[hidden] { display: none; }
+  body.sheet-open { overflow: hidden; }
+  #entry-box {
+    position: fixed; z-index: 50; left: 0; right: 0; bottom: 0; margin: 0;
+    background: var(--bg); border-radius: 12px 12px 0 0; border-bottom: 0;
+    max-height: calc(100dvh - var(--topbar-h) - env(safe-area-inset-top) - 8px);
+    display: flex; flex-direction: column;
+    transform: translateY(105%); visibility: hidden;
+    transition: transform 220ms ease, visibility 0s linear 220ms;
+  }
+  #entry-box.open { transform: none; visibility: visible; transition: transform 220ms ease; }
+  #entry-box .box-body { overflow-y: auto; padding: 24px 16px calc(16px + env(safe-area-inset-bottom)); }
+  .sheet-close {
+    display: block; position: absolute; top: 0; right: 0; z-index: 1;
+    width: 48px; height: 44px; padding: 0; font-size: 14px;
+  }
+  .type-switch button { min-height: 44px; }
+  .amount-field input { font-size: 28px; font-weight: 500; padding: 8px 36px 8px 12px; min-height: 56px; }
+  .amount-field span { font-size: 18px; right: 14px; }
+  #entry-box input[type="text"], #entry-box input[type="date"] { font-size: 16px; min-height: 44px; }
+  #entry-box input[type="date"] { width: 100%; min-width: 0; }
+  .date-row { display: flex; align-items: center; gap: 6px; margin-top: 14px; flex-wrap: wrap; }
+  .date-row .bracket { padding: 13px 6px; margin: -13px 0; }
+  #entry-form:not(.date-open) #date-field { display: none; }
+  #entry-form.date-open .date-row { display: none; }
+  #save-button { min-height: 52px; font-size: 14px; }
+  #cancel-edit, .form-hint { display: none; }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .form-hint { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #entry-box, #entry-box.open { transition: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

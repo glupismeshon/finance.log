@@ -4,7 +4,9 @@
   const KEY = "money.log.ledger.v2", KEY_V1 = "money.log.ledger.v1";
   const $ = id => document.getElementById(id);
   let state = schema.empty(todayISO()), mode = "expense", filter = "all", trash = false, editing = null, pendingImport = null, locked = false;
-  let undoId = null;
+  let undoId = null, tab = "journal";
+  const mobileQuery = window.matchMedia("(max-width: 599px)");
+  const isMobile = () => mobileQuery.matches;
   function todayISO() {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
@@ -47,7 +49,8 @@
       b.classList.toggle("selected", b.dataset.type === type);
       b.setAttribute("aria-pressed", String(b.dataset.type === type));
     });
-    $("save-button").firstElementChild.textContent = editing ? "Сохранить изменения" : type === "income" ? "Записать доход" : "Записать расход";
+    $("save-button").firstElementChild.textContent = isMobile() ? "записать" : editing ? "Сохранить изменения" : type === "income" ? "Записать доход" : "Записать расход";
+    $("form-title").textContent = editing ? (isMobile() ? "изменить" : "изменить запись") : isMobile() ? (type === "income" ? "пришло" : "ушло") : "новая запись";
     $("note").placeholder = type === "income" ? "Например, зарплата" : "Например, кофе по дороге";
   }
   function resetForm(focus = false) {
@@ -56,8 +59,10 @@
     $("date").value = today();
     $("date").max = today();
     $("form-error").textContent = "";
-    $("form-title").textContent = "новая запись";
     $("cancel-edit").hidden = true;
+    $("delete-entry").hidden = true;
+    $("entry-form").classList.remove("date-open");
+    updateDateSummary();
     setMode(mode);
     if (focus) $("amount").focus();
   }
@@ -66,12 +71,44 @@
     $("amount").value = amountInput(amountOf(entry));
     $("date").value = entry.date;
     $("note").value = entry.note;
-    $("form-title").textContent = "изменить запись";
     $("cancel-edit").hidden = false;
+    $("delete-entry").hidden = false;
     $("form-error").textContent = "";
+    $("entry-form").classList.remove("date-open");
+    updateDateSummary();
     setMode(entry.type);
+    openSheet();
     $("amount").focus();
-    $("entry-form").scrollIntoView({block:"nearest",behavior:"smooth"});
+    if (!isMobile()) $("entry-form").scrollIntoView({block:"nearest",behavior:"smooth"});
+  }
+  function updateDateSummary() {
+    const value = $("date").value;
+    $("date-summary").textContent = !value || value === today() ? "сегодня" : M.validDate(value) ? dateLabel(value) : value;
+  }
+  function openSheet() {
+    if (!isMobile()) return;
+    $("entry-box").classList.add("open");
+    $("sheet-backdrop").hidden = false;
+    document.body.classList.add("sheet-open");
+  }
+  function closeSheet() {
+    $("entry-box").classList.remove("open");
+    $("sheet-backdrop").hidden = true;
+    document.body.classList.remove("sheet-open");
+  }
+  function dismissSheet() { resetForm(); closeSheet(); }
+  function softDelete(entry) {
+    try {
+      commit(journal.setDeleted(state,entry.id,true));
+      if(editing === entry.id) dismissSheet();
+      toast("Запись перемещена в удалённые.",entry.id);
+    } catch(e){toast(e.message);}
+  }
+  function startNew(type) {
+    if (type) mode = type;
+    resetForm();
+    openSheet();
+    $("amount").focus();
   }
   const node = (tag, className, text) => {
     const element = document.createElement(tag);
@@ -97,7 +134,7 @@
       } else {
         empty.append(line("[ok]","ok","журнал загружен"),line("[ok]","ok","записей пока нет"));
         const button = node("button","btn primary","+ первая запись"); button.type = "button";
-        button.addEventListener("click",()=>resetForm(true)); empty.append(button);
+        button.addEventListener("click",()=>startNew()); empty.append(button);
       }
       container.append(empty); return;
     }
@@ -127,14 +164,9 @@
         change.addEventListener("click",()=>edit(entry));
         const remove = node("button","bracket","[удалить]");
         remove.setAttribute("aria-label",`Удалить: ${entry.note || label}`);
-        remove.addEventListener("click",()=>{
-          try {
-            commit(journal.setDeleted(state,entry.id,true));
-            if(editing === entry.id) resetForm();
-            toast("Запись перемещена в удалённые.",entry.id);
-          } catch(e){toast(e.message);}
-        });
+        remove.addEventListener("click",()=>softDelete(entry));
         actions.append(change,remove);
+        row.addEventListener("click",()=>{ if (isMobile()) edit(entry); });
       }
       meta.append(actions); row.append(meta); container.append(row);
     }
@@ -153,6 +185,7 @@
     $("opening-value").textContent = money(primary().openingCents);
     $("nav-count").textContent = state.operations.filter(e=>!e.deleted).length;
     $("trash-count").textContent = state.operations.filter(e=>e.deleted).length;
+    $("more-trash-count").textContent = $("trash-count").textContent;
     renderEntries();
   }
   function setView(isTrash) {
@@ -163,7 +196,28 @@
     $("trash-nav").setAttribute("aria-current",trash ? "page" : "false");
     $("journal-title").textContent = trash ? "удалённые" : "журнал";
     $("page-label").textContent = trash ? "удалённые" : "журнал";
+    document.body.toggleAttribute("data-trash",trash);
+    updateTabbar();
     renderEntries();
+  }
+  function updateTabbar() {
+    const active = trash ? "more" : tab;
+    document.querySelectorAll(".tab").forEach(b=>{
+      const on = b.dataset.tab === active;
+      b.classList.toggle("active",on);
+      b.setAttribute("aria-current",on ? "page" : "false");
+    });
+  }
+  function setTab(name) {
+    if (!$("sheet-backdrop").hidden) dismissSheet();
+    tab = name;
+    document.body.dataset.tab = name;
+    setView(false);
+    window.scrollTo(0,0);
+  }
+  function openTrash() {
+    setTab("journal");
+    setView(true);
   }
   $("entry-form").addEventListener("submit",event=>{
     event.preventDefault(); $("form-error").textContent = "";
@@ -180,7 +234,7 @@
         allocations:mode === "income" ? [] : [{categoryId:null,amountCents}]};
       commit(journal.upsertOperation(state,entry,now));
       toast(previous ? "Изменения сохранены." : mode === "income" ? "Доход записан." : "Расход записан.");
-      resetForm(true); setView(false);
+      resetForm(!isMobile()); closeSheet(); setView(false);
     } catch(e) { $("form-error").textContent = e.message; }
   });
   document.querySelectorAll("[data-type]").forEach(b=>b.addEventListener("click",()=>setMode(b.dataset.type)));
@@ -190,7 +244,29 @@
     renderEntries();
   }));
   $("search").addEventListener("input",renderEntries);
+  $("search-toggle").addEventListener("click",()=>{
+    const open = $("search-toggle").getAttribute("aria-expanded") !== "true";
+    $("search-toggle").setAttribute("aria-expanded",String(open));
+    document.querySelector(".journal-tools").classList.toggle("search-open",open);
+    if (open) $("search").focus();
+  });
   $("cancel-edit").addEventListener("click",()=>resetForm());
+  $("delete-entry").addEventListener("click",()=>{
+    const entry = editing ? state.operations.find(e=>e.id===editing) : null;
+    if (entry && !entry.deleted) softDelete(entry);
+  });
+  $("sheet-close").addEventListener("click",dismissSheet);
+  $("sheet-backdrop").addEventListener("click",dismissSheet);
+  document.querySelectorAll("[data-new]").forEach(b=>b.addEventListener("click",()=>startNew(b.dataset.new)));
+  $("date-toggle").addEventListener("click",()=>{
+    $("entry-form").classList.add("date-open");
+    $("date").focus();
+  });
+  $("date").addEventListener("change",updateDateSummary);
+  document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>setTab(b.dataset.tab)));
+  $("trash-back").addEventListener("click",()=>setTab("more"));
+  $("more-trash").addEventListener("click",openTrash);
+  mobileQuery.addEventListener("change",()=>{ if(!isMobile()) closeSheet(); setMode(mode); });
   $("journal-nav").addEventListener("click",()=>setView(false));
   $("trash-nav").addEventListener("click",()=>setView(true));
   $("opening-button").addEventListener("click",()=>{
@@ -215,15 +291,19 @@
     const a=document.createElement("a");a.href=url;a.download=filename;document.body.append(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),1000);
   }
-  $("export-button").addEventListener("click",()=>{
+  function doExport() {
     try {
       const raw = locked ? (localStorage.getItem(KEY) ?? localStorage.getItem(KEY_V1)) : JSON.stringify({...state,exportedAt:new Date().toISOString()},null,2);
       if(raw===null) throw new Error("Нет доступных данных для копии.");
       download(raw,`money-log-${today()}${locked ? "-recovery" : ""}.json`);
       toast("Копия подготовлена для скачивания.");
     } catch(e){toast(e.message);}
-  });
-  $("import-button").addEventListener("click",()=>{$("import-file").value="";$("import-file").click();});
+  }
+  const doImport = ()=>{$("import-file").value="";$("import-file").click();};
+  $("export-button").addEventListener("click",doExport);
+  $("more-export").addEventListener("click",doExport);
+  $("import-button").addEventListener("click",doImport);
+  $("more-import").addEventListener("click",doImport);
   $("import-file").addEventListener("change",async()=>{
     const file=$("import-file").files[0];if(!file)return;
     try {
@@ -263,9 +343,9 @@
   });
   document.addEventListener("keydown",event=>{
     if(event.ctrlKey||event.metaKey||event.altKey||document.querySelector("dialog[open]"))return;
-    if(event.key==="Escape"){resetForm();$("amount").blur();return;}
+    if(event.key==="Escape"){dismissSheet();$("amount").blur();return;}
     if(["INPUT","TEXTAREA","SELECT"].includes(event.target.tagName)||event.target.isContentEditable)return;
-    if(event.key.toLowerCase()==="n"||event.key.toLowerCase()==="т"){event.preventDefault();resetForm(true);}
+    if(event.key.toLowerCase()==="n"||event.key.toLowerCase()==="т"){event.preventDefault();startNew();}
   });
   $("today-label").textContent=new Intl.DateTimeFormat("ru-RU",{day:"2-digit",month:"short",year:"numeric"}).format(new Date());
   resetForm();render();
