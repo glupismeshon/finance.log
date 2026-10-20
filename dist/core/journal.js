@@ -28,7 +28,7 @@
     return {state: upsertOperation(state, adj, now), diff};
   }
   const canon = v => JSON.stringify(v, (k, x) => x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) : x);
-  const content = o => canon({type: o.type, date: o.date, note: o.note, deleted: o.deleted, legs: o.legs, allocations: o.allocations, links: o.links});
+  const content = o => canon({type: o.type, date: o.date, note: o.note, deleted: o.deleted, legs: o.legs, allocations: o.allocations, links: o.links, merchant: o.merchant || null});
   function upsertOperation(state, op, nowISO) {
     const index = state.operations.findIndex(o => o.id === op.id);
     const put = o => ({...state, operations: index < 0 ? [...state.operations, o] : state.operations.map((x, i) => i === index ? o : x)});
@@ -56,7 +56,9 @@
     const mine = state.accounts.find(a => a.id === "main"), theirs = incoming.accounts.find(a => a.id === "main");
     const takeOpening = mine && theirs && state.operations.length === 0 && mine.openingCents === 0;
     const accounts = state.accounts.map(a => a === mine && takeOpening ? {...a, openingCents: theirs.openingCents, openingDate: theirs.openingDate} : a);
-    return {state: validate({...state, accounts: [...accounts, ...newAccounts], operations: [...state.operations, ...added]}), added: added.length};
+    const catIds = new Set((state.categories || []).map(c => c.id));
+    const newCats = (incoming.categories || []).filter(c => !catIds.has(c.id));
+    return {state: validate({...state, accounts: [...accounts, ...newAccounts], categories: [...(state.categories || []), ...newCats], operations: [...state.operations, ...added]}), added: added.length};
   }
   function setOpening(state, accountId, cents) {
     if (!state.accounts.some(a => a.id === accountId)) throw new Error("Счёт не найден.");

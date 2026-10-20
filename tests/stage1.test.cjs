@@ -99,8 +99,8 @@ test("Миграция v1 и данные этапа 0 проходят validate
   assert.deepEqual(S.validate(st), st);
   assert.equal(st.accounts[0].order, undefined);
 });
-test("Модули грузятся в vm без module в порядке money, schema, accounts, journal, views", () => {
+test("Модули грузятся в vm без module в порядке money, schema, accounts, categories, journal, suggest, views", () => {
   const ctx = vm.createContext({});
-  for (const f of ["money", "schema", "accounts", "journal", "views"]) vm.runInContext(fs.readFileSync(`${__dirname}/../dist/core/${f}.js`, "utf8"), ctx);
-  assert.deepEqual(Object.keys(ctx.MoneyCore).sort(), ["accounts", "journal", "money", "schema", "views"]);
+  for (const f of ["money", "schema", "accounts", "categories", "journal", "suggest", "views"]) vm.runInContext(fs.readFileSync(`${__dirname}/../dist/core/${f}.js`, "utf8"), ctx);
+  assert.deepEqual(Object.keys(ctx.MoneyCore).sort(), ["accounts", "categories", "journal", "money", "schema", "suggest", "views"]);
 });

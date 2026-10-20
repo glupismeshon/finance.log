@@ -117,10 +117,10 @@ test("Валидация отвергает невозможные операц�
   bad(op("a","income",10,{legs:[{accountId:"main",amountCents:-10}]}));
   bad(op("a","income",10,{legs:[{accountId:"nope",amountCents:10}]}));
   bad(op("a","expense",10,{allocations:[{categoryId:null,amountCents:9}]}));
-  bad(op("a","income",10,{allocations:[{categoryId:null,amountCents:10}]}));
+  bad(op("a","income",10,{allocations:[{categoryId:null,amountCents:9}]}));
   bad(op("a","transfer",10));
   assert.doesNotThrow(()=>S.validate({...base(),operations:[op("a","expense",10,{allocations:[]})]}));
-  assert.doesNotThrow(()=>S.validate({...base(),operations:[op("a","expense",10,{allocations:[{categoryId:"c1",amountCents:4},{categoryId:null,amountCents:6}]})]}));
+  assert.doesNotThrow(()=>S.validate({...base(),operations:[op("a","expense",10,{allocations:[{categoryId:"c-transport",amountCents:4},{categoryId:null,amountCents:6}]})]}));
   assert.throws(()=>S.validate({...base(),version:3}),/Не удалось прочитать копию money\.log/);
   assert.throws(()=>S.migrate({version:3},TODAY),/Не удалось прочитать копию money\.log/);
 });

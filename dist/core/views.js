@@ -31,7 +31,24 @@
     result.archived = rows(sorted.filter(a => a.archived));
     return result;
   }
-  const api = {balances, totals, accountTotals};
+  function spending(state, {from, to, type = "expense", by = "category", accountId} = {}) {
+    const parent = new Map((state.categories || []).map(c => [c.id, c.parentId]));
+    const sums = new Map();
+    for (const op of state.operations) {
+      if (op.deleted || op.type !== type || (from && op.date < from) || (to && op.date > to)) continue;
+      const leg = op.legs[0];
+      if (accountId && leg.accountId !== accountId) continue;
+      const parts = op.allocations.length ? op.allocations : [{categoryId: null, amountCents: Math.abs(leg.amountCents)}];
+      for (const a of parts) {
+        let id;
+        if (by === "merchant") id = op.merchant || null;
+        else id = a.categoryId === null ? null : by === "parent" ? (parent.get(a.categoryId) ?? a.categoryId) : a.categoryId;
+        sums.set(id, check((sums.get(id) || 0) + a.amountCents));
+      }
+    }
+    return [...sums].map(([id, cents]) => by === "merchant" ? {merchant: id, cents} : {id, cents}).sort((a, b) => b.cents - a.cents);
+  }
+  const api = {balances, totals, accountTotals, spending};
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else (root.MoneyCore = root.MoneyCore || {}).views = api;
 })(globalThis);

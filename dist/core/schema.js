@@ -12,8 +12,42 @@
   const plain = v => !!v && typeof v === "object" && !Array.isArray(v);
   const isoOk = v => typeof v === "string" && Number.isFinite(Date.parse(v));
   const cents = v => Number.isSafeInteger(v) && Math.abs(v) <= MAX_AMOUNT;
-  const empty = today => ({version: 2, accounts: [{id: "main", name: "Основной", kind: "debit", openingCents: 0, openingDate: today, archived: false}], categories: [], operations: [], schedules: [], reserves: [], budgets: [], loans: []});
-  function normOp(o, accountIds, nested) {
+  const CAT_KEYS = {
+    expense: [["groceries", ["groceries_meat", "groceries_dairy", "groceries_produce", "groceries_other"]], ["transport"], ["housing"], ["subscriptions"], ["health"], ["clothing"], ["fun"], ["household"], ["other_expense"]],
+    income: [["salary"], ["advance"], ["family_help"], ["refund_in"], ["other_income"]]
+  };
+  const DEFAULT_CATEGORIES = (() => {
+    const list = [];
+    let order = 0;
+    for (const kind of ["expense", "income"]) for (const [key, kids] of CAT_KEYS[kind]) {
+      list.push({id: "c-" + key, key, name: null, parentId: null, kind, archived: false, order: order++});
+      for (const k of kids || []) list.push({id: "c-" + k, key: k, name: null, parentId: "c-" + key, kind, archived: false, order: order++});
+    }
+    return list;
+  })();
+  const defaultCategories = () => DEFAULT_CATEGORIES.map(c => ({...c}));
+  const empty = today => ({version: 2, accounts: [{id: "main", name: "Основной", kind: "debit", openingCents: 0, openingDate: today, archived: false}], categories: defaultCategories(), operations: [], schedules: [], reserves: [], budgets: [], loans: []});
+  const BAD_CATS = "В копии есть некорректные или повторяющиеся категории.";
+  const nonEmpty = v => typeof v === "string" && v.trim().length > 0;
+  function normCategories(list) {
+    const bad = () => { throw new Error(BAD_CATS); };
+    const byId = new Map();
+    const cats = list.map(c => {
+      if (!plain(c) || typeof c.id !== "string" || !ID.test(c.id) || byId.has(c.id) || !["expense", "income"].includes(c.kind) ||
+        !(c.parentId === null || typeof c.parentId === "string") || typeof c.archived !== "boolean" || !Number.isSafeInteger(c.order) ||
+        (c.key == null && c.name == null) || (c.key != null && (!nonEmpty(c.key) || c.key.length > 100)) ||
+        (c.name != null && (!nonEmpty(c.name) || c.name.length > 100))) bad();
+      const cat = {id: c.id, key: c.key == null ? null : c.key, name: c.name == null ? null : c.name, parentId: c.parentId, kind: c.kind, archived: c.archived, order: c.order};
+      byId.set(cat.id, cat);
+      return cat;
+    });
+    for (const c of cats) if (c.parentId !== null) {
+      const p = byId.get(c.parentId);
+      if (!p || p.parentId !== null || p.kind !== c.kind) bad();
+    }
+    return {cats, byId};
+  }
+  function normOp(o, accountIds, nested, catById) {
     const bad = () => { throw new Error(BAD_OPS); };
     if (!plain(o) || typeof o.id !== "string" || !ID.test(o.id) || !OP_TYPES.includes(o.type) || !validDate(o.date) ||
       typeof o.note !== "string" || o.note.length > 160 || !isoOk(o.createdAt) || !isoOk(o.updatedAt) || typeof o.deleted !== "boolean" ||
@@ -29,13 +63,28 @@
     if (o.type === "adjustment" && !o.note.trim()) bad();
     const allocations = o.allocations.map(a => {
       if (!plain(a) || !(a.categoryId === null || typeof a.categoryId === "string") || !cents(a.amountCents) || a.amountCents <= 0) bad();
+      if (a.categoryId !== null) {
+        const c = catById.get(a.categoryId);
+        if (!c || c.kind !== o.type) bad();
+      }
       return {categoryId: a.categoryId, amountCents: a.amountCents};
     });
-    if (o.type !== "expense" ? allocations.length : allocations.length && allocations.reduce((s, a) => s + a.amountCents, 0) !== -legs[0].amountCents) bad();
+    if (o.type === "expense") { if (allocations.length && allocations.reduce((s, a) => s + a.amountCents, 0) !== -legs[0].amountCents) bad(); }
+    else if (o.type === "income") { if (allocations.length && allocations.reduce((s, a) => s + a.amountCents, 0) !== legs[0].amountCents) bad(); }
+    else if (allocations.length) bad();
+    let merchant;
+    if (o.merchant !== undefined) {
+      if (o.type !== "income" && o.type !== "expense") bad();
+      if (typeof o.merchant !== "string") bad();
+      const m = o.merchant.trim();
+      if (m.length > 80) bad();
+      if (m) merchant = m;
+    }
     const op = {id: o.id, type: o.type, date: o.date, note: o.note, createdAt: o.createdAt, updatedAt: o.updatedAt, deleted: o.deleted, legs, allocations, links: o.type === "expense" && typeof o.links.feeOf === "string" && ID.test(o.links.feeOf) ? {feeOf: o.links.feeOf} : {}};
+    if (merchant) op.merchant = merchant;
     if (!nested) op.revisions = o.revisions.map(r => {
       if (!plain(r) || !isoOk(r.at)) bad();
-      return {at: r.at, before: normOp(r.before, accountIds, true)};
+      return {at: r.at, before: normOp(r.before, accountIds, true, catById)};
     });
     return op;
   }
@@ -53,9 +102,10 @@
       if (a.order !== undefined) acc.order = a.order;
       return acc;
     });
+    const {cats, byId: catById} = normCategories(data.categories);
     const ids = new Set();
     const operations = data.operations.map(o => {
-      const op = normOp(o, accountIds, false);
+      const op = normOp(o, accountIds, false, catById);
       if (ids.has(op.id)) throw new Error(BAD_OPS);
       ids.add(op.id);
       return op;
@@ -74,8 +124,8 @@
     let total = 0;
     for (const a of accounts) if (a.kind !== "loan" && a.kind !== "person") total += sums.get(a.id);
     if (!Number.isSafeInteger(total)) throw new Error(LIMIT);
-    const rest = {};
-    for (const k of ["categories", "schedules", "reserves", "budgets", "loans"]) rest[k] = data[k].slice();
+    const rest = {categories: cats};
+    for (const k of ["schedules", "reserves", "budgets", "loans"]) rest[k] = data[k].slice();
     return {version: 2, accounts, categories: rest.categories, operations, schedules: rest.schedules, reserves: rest.reserves, budgets: rest.budgets, loans: rest.loans};
   }
   function validateV1(data) {
@@ -99,7 +149,7 @@
     return {version: 1, openingCents: data.openingCents, entries};
   }
   function migrate(data, today) {
-    if (plain(data) && data.version === 2) return validate(data);
+    if (plain(data) && data.version === 2) return validate(Array.isArray(data.categories) && !data.categories.length ? {...data, categories: defaultCategories()} : data);
     if (plain(data) && data.version === 1) {
       const v1 = validateV1(data);
       const openingDate = v1.entries.length ? v1.entries.reduce((m, e) => e.date < m ? e.date : m, v1.entries[0].date) : today;
@@ -116,7 +166,7 @@
     }
     throw new Error(FORMAT);
   }
-  const api = {OP_TYPES, KINDS, empty, validate, migrate};
+  const api = {OP_TYPES, KINDS, DEFAULT_CATEGORIES, defaultCategories, empty, validate, migrate};
   if (node) module.exports = api;
   else (root.MoneyCore = root.MoneyCore || {}).schema = api;
 })(globalThis);
