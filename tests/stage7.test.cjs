@@ -450,3 +450,32 @@ test("все core-скрипты грузятся в vm без module в нуж�
   assert.equal(typeof C.meters.addReading, "function");
   assert.equal(typeof C.schedules.estimate, "function");
 });
+
+test("простой кредит: правило loan без записи в loans — обычный перевод, прогноз по сумме правила", () => {
+  let s = st();
+  s = A.addAccount(s, {id: "card", name: "Сбер", kind: "debit", openingCents: 10000000, openingDate: "2026-01-01"}, NOW);
+  s = A.addAccount(s, {id: "ip", name: "ипотека", kind: "loan", openingCents: -60000000, openingDate: TODAY}, NOW);
+  s = SC.addSchedule(s, {id: "r1", type: "transfer", name: "ипотека", amountCents: 1586300, accountId: "card", toAccountId: "ip", template: "loan", amountMode: "fixed",
+    rule: {freq: "monthly", interval: 1, day: 25}, startDate: TODAY, endDate: null}, NOW);
+  assert.equal(s.loans.length, 0);
+  const sc = s.schedules[0];
+  // без аргумента loans — прежняя строгая проверка; с пустым loans — обычный перевод
+  assert.throws(() => SC.confirmOp(sc, "2026-10-25", {id: "x", now: NOW}), /loans\.paymentOp/);
+  const op = SC.confirmOp(sc, "2026-10-25", {id: "p1", now: NOW, loans: s.loans, date: "2026-10-25"});
+  assert.equal(op.type, "transfer");
+  assert.deepEqual(op.legs, [{accountId: "card", amountCents: -1586300}, {accountId: "ip", amountCents: 1586300}]);
+  assert.deepEqual(op.links, {scheduleId: "r1", dueDate: "2026-10-25"});
+  // запись loans для этого правила по-прежнему запрещает обычное подтверждение
+  assert.throws(() => SC.confirmOp(sc, "2026-10-25", {id: "x", now: NOW, loans: [{scheduleId: "r1"}]}), /loans\.paymentOp/);
+  // прогноз: вид all — платёж со Сбера уменьшает долг, итог не меняется; noLoans — на сумму правила уменьшается остаток Сбера
+  const own = F.project(s, {today: TODAY, days: 10, view: "ownOnly"});
+  assert.equal(own.points[0].balance, 10000000);
+  assert.equal(own.points[10].balance, 10000000 - 1586300);
+  const all = F.project(s, {today: TODAY, days: 10, view: "all"});
+  assert.equal(all.points[10].balance, all.points[0].balance);
+  // подтверждение: долг и остаток счёта, правило отмечено выполненным
+  s = J.upsertOperation(s, op, NOW);
+  assert.equal(debt(s, "ip"), 60000000 - 1586300);
+  assert.equal(V.balances(s).byAccount.card, 10000000 - 1586300);
+  assert.equal(SC.occurrences(s, {from: "2026-10-25", to: "2026-10-25", today: TODAY})[0].status, "confirmed");
+});

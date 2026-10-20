@@ -125,9 +125,13 @@
         <h2 class="box-label" id="account-label" data-i18n="acc.one"></h2>
         <div class="box-body">
           <button class="bracket acc-back" id="account-back" type="button" data-i18n="common.back"></button>
+          <div class="muted" id="account-pre" hidden></div>
           <div class="balance-number" id="account-balance">0<span class="balance-decimals">,00 ₽</span></div>
           <div class="muted" id="account-meta"></div>
+          <div class="muted acc-avail-line" id="account-avail" hidden></div>
+          <div id="loan-sec" class="loan-sec" hidden></div>
           <div class="acc-actions">
+            <button class="bracket" id="account-loan-pay" type="button" hidden data-i18n="loan.pay"></button>
             <button class="bracket" id="account-reconcile" type="button" data-i18n="acc.reconcile"></button>
             <button class="bracket" id="account-edit" type="button" data-i18n="common.edit"></button>
             <button class="bracket" id="account-archive" type="button"></button>
@@ -472,11 +476,17 @@
         <label class="field-label" for="account-kind" data-i18n="acform.kind"></label>
         <select id="account-kind"></select>
         <div class="muted hint" id="account-kind-hint" hidden data-i18n="acform.debtHint"></div>
-        <label class="field-label" for="account-opening" data-i18n="acform.opening"></label>
-        <div class="amount-field"><input id="account-opening" type="text" inputmode="decimal" data-i18n-placeholder="amount.ph" autocomplete="off" maxlength="21"><span aria-hidden="true">₽</span></div>
-        <button type="button" class="bracket sign-btn" data-sign="account-opening" data-i18n="acform.minus"></button>
-        <div class="field-label" id="account-date-label" data-i18n="acform.date"></div>
-        <div class="dp" data-label="account-date-label"><input id="account-date" type="hidden"></div>
+        <div id="account-limit-field" hidden>
+          <label class="field-label" for="account-limit"><span data-i18n="acform.limit"></span> <span class="muted hint" data-i18n="common.optional"></span></label>
+          <div class="amount-field"><input id="account-limit" type="text" inputmode="decimal" data-i18n-placeholder="amount.ph" autocomplete="off" maxlength="21"><span aria-hidden="true">₽</span></div>
+        </div>
+        <div id="account-money-fields">
+          <label class="field-label" for="account-opening" data-i18n="acform.opening"></label>
+          <div class="amount-field"><input id="account-opening" type="text" inputmode="decimal" data-i18n-placeholder="amount.ph" autocomplete="off" maxlength="21"><span aria-hidden="true">₽</span></div>
+          <button type="button" class="bracket sign-btn" data-sign="account-opening" data-i18n="acform.minus"></button>
+          <div class="field-label" id="account-date-label" data-i18n="acform.date"></div>
+          <div class="dp" data-label="account-date-label"><input id="account-date" type="hidden"></div>
+        </div>
         <div id="account-error" class="form-error" role="alert"></div>
         <button type="submit" class="btn primary" id="account-save"><span data-i18n="acform.save"></span><span aria-hidden="true">↵</span></button>
       </form>
@@ -608,6 +618,46 @@
         <button type="button" class="btn ghost" id="bv-tariff-save" data-i18n="bv.tariffSave"></button>
       </div>
       <button type="button" class="btn primary" id="bv-edit" data-i18n="bv.edit"></button>
+    </div>
+  </section>
+
+  <section class="box sheet-form" id="loan-box" role="dialog" aria-modal="true" aria-labelledby="loan-title">
+    <h2 class="box-label" id="loan-title"></h2>
+    <button type="button" class="bracket sheet-x" id="loan-close" data-i18n-aria-label="common.close">[×]</button>
+    <div class="box-body">
+      <form id="loan-form" novalidate>
+        <label class="field-label first" for="loan-name" data-i18n="loan.f.name"></label>
+        <input id="loan-name" type="text" maxlength="80" autocomplete="off" data-i18n-placeholder="loan.f.namePh">
+        <div id="loan-owed-field">
+          <label class="field-label" for="loan-amount" data-i18n="loan.f.owed"></label>
+          <div class="amount-field"><input id="loan-amount" type="text" inputmode="decimal" data-i18n-placeholder="amount.ph" autocomplete="off" maxlength="20"><span aria-hidden="true">₽</span></div>
+        </div>
+        <label class="field-label" for="loan-pay" data-i18n="loan.f.monthly"></label>
+        <div class="amount-field"><input id="loan-pay" type="text" inputmode="decimal" data-i18n-placeholder="amount.ph" autocomplete="off" maxlength="20"><span aria-hidden="true">₽</span></div>
+        <label class="field-label" for="loan-day" data-i18n="loan.f.day"></label>
+        <select id="loan-day"></select>
+        <label class="field-label" for="loan-from"><span data-i18n="loan.f.from"></span> <span class="muted hint" data-i18n="common.optional"></span></label>
+        <select id="loan-from"></select>
+        <div id="loan-error" class="form-error" role="alert"></div>
+        <button type="submit" class="btn primary" id="loan-save"><span data-i18n="loan.f.save"></span><span aria-hidden="true">↵</span></button>
+      </form>
+    </div>
+  </section>
+
+  <section class="box sheet-form" id="lpay-box" role="dialog" aria-modal="true" aria-labelledby="lpay-title">
+    <h2 class="box-label" id="lpay-title"></h2>
+    <button type="button" class="bracket sheet-x" id="lpay-close" data-i18n-aria-label="common.close">[×]</button>
+    <div class="box-body">
+      <form id="lpay-form" novalidate>
+        <label class="field-label first" for="lpay-amount" data-i18n="loan.p.amount"></label>
+        <div class="amount-field"><input id="lpay-amount" type="text" inputmode="decimal" data-i18n-placeholder="amount.ph" autocomplete="off" maxlength="20"><span aria-hidden="true">₽</span></div>
+        <label class="field-label" for="lpay-from" data-i18n="loan.p.from"></label>
+        <select id="lpay-from"></select>
+        <div class="field-label" id="lpay-date-label" data-i18n="loan.p.date"></div>
+        <div class="dp" data-label="lpay-date-label"><input id="lpay-date" type="hidden"></div>
+        <div id="lpay-error" class="form-error" role="alert"></div>
+        <button type="submit" class="btn primary" id="lpay-save"><span data-i18n="loan.p.save"></span><span aria-hidden="true">↵</span></button>
+      </form>
     </div>
   </section>
 

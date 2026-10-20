@@ -209,7 +209,7 @@
   const dps = {};
   document.querySelectorAll(".dp").forEach(host => {
     const id = host.querySelector("input").id;
-    dps[{"account-date": "account", "recon-date": "recon", "plan-start": "planStart", "plan-end": "planEnd"}[id] || "date"] = DP.create(host, {
+    dps[{"account-date": "account", "recon-date": "recon", "plan-start": "planStart", "plan-end": "planEnd", "lpay-date": "lpayDate"}[id] || "date"] = DP.create(host, {
       heat: id === "date" ? heatForCalendar : undefined,
       // на телефоне после выбора возвращаем строку «// дата: …» вместо открытого поля
       onClose: () => { if (id === "date" && isMobile()) $("entry-form").classList.remove("date-open"); }
@@ -341,19 +341,26 @@
       const accText = entry.type === "transfer" ? (noteText ? route : "") : accName(entry.legs[0].accountId);
       const cat = opCat(entry), merchantText = entry.merchant || "";
       const planParts = entry.links && entry.links.scheduleId ? [t("row.plan"), (state.schedules.find(x => x.id === entry.links.scheduleId) || {}).name].filter(Boolean) : [];
-      const title = entry.type === "transfer" ? noteText || route : merchantText || noteText || (cat ? catPath(cat) : label);
+      const isLoanOp = entry.type === "loan_payment";
+      const toLoan = entry.type === "transfer" && (accById(opTo(entry)) || {}).kind === "loan"; // перевод на кредит — платёж по кредиту
+      const title = isLoanOp ? t(entry.links && entry.links.early ? "loan.row.early" : "type.loan_payment") : toLoan ? t("type.loan_payment") : entry.type === "transfer" ? noteText || route : merchantText || noteText || (cat ? catPath(cat) : label);
       const sign = entry.legs[0].amountCents > 0 ? "+" : "−";
-      row.append(node("span",`mark ${entry.type}`,{income: "[+]", expense: "[-]", transfer: "[⇄]", adjustment: "[~]"}[entry.type]));
+      row.append(node("span",`mark ${entry.type}`,toLoan ? "[%]" : {income: "[+]", expense: "[-]", transfer: "[⇄]", adjustment: "[~]", loan_payment: "[%]"}[entry.type]));
       row.append(node("span","ttitle",title));
-      const viewLeg = onAcc && entry.type === "transfer" ? entry.legs.find(l => l.accountId === accFilter) : null;
+      const viewLeg = onAcc && (entry.type === "transfer" || isLoanOp) ? entry.legs.find(l => l.accountId === accFilter) : null;
       const transferText = viewLeg ? `${viewLeg.amountCents > 0 ? "+" : "−"}${money(amountOf(entry))}` : money(amountOf(entry));
-      row.append(node("span",`tamount ${entry.type}`,entry.type === "transfer" ? transferText : `${sign}${money(amountOf(entry))}`));
+      row.append(node("span",`tamount ${entry.type}`,entry.type === "transfer" || isLoanOp ? transferText : `${sign}${money(amountOf(entry))}`));
       if (merchantText && noteText) row.append(node("div","tnote",noteText));
       const meta = node("div","tmeta");
       const metaText = node("span","tmeta-text");
       const itemsN = entry.items ? entry.items.filter(i => i.kind === "item").length : 0;
       const posText = itemsN ? tp("receipt.positions", itemsN) : "";
-      if (cat) {
+      if (isLoanOp) {
+        const interest = entry.allocations.reduce((sum, a) => sum + a.amountCents, 0), principal = entry.legs[1].amountCents;
+        metaText.textContent = [t("loan.row.meta", {interest: money(interest), principal: money(principal)}), `${accName(entry.legs[0].accountId)} → ${accName(entry.legs[1].accountId)}`, trash ? t("row.deleted") : ""].filter(Boolean).join(" · ");
+      } else if (toLoan) {
+        metaText.textContent = [route, trash ? t("row.deleted") : ""].filter(Boolean).join(" · ");
+      } else if (cat) {
         if (posText) metaText.append(document.createTextNode(posText + " · "));
         const link = node("button","bracket cat-link",catPath(cat)); link.type = "button";
         link.setAttribute("aria-label",t("filter.catTap",{name: catPath(cat)}));
@@ -368,7 +375,7 @@
         restore.addEventListener("click",()=>{try{commit(journal.setDeleted(state,entry.id,false));toast(t("msg.restored"));}catch(e){toast(I.err(e));}});
         actions.append(restore);
       } else {
-        const canEdit = entry.type !== "adjustment";
+        const canEdit = entry.type !== "adjustment" && !isLoanOp;
         if (canEdit) {
           const change = node("button","bracket",t("common.edit"));
           change.setAttribute("aria-label",t("row.editAria",{name: noteText || label}));
@@ -417,6 +424,8 @@
     const row = node("button",`acc-row${archived ? " archived" : ""}`); row.type = "button"; row.dataset.id = r.account.id;
     const name = node("span","acc-name",I.stored(r.account.name));
     name.append(node("span","acc-kind",` · ${I.kindLabel(r.account.kind)}`));
+    const av = views.available(state, r.account.id);
+    if (av !== null) name.append(node("span","acc-avail",t("acc.avail",{sum: money(av)})));
     row.append(node("span","acc-mark","[▪]"),name,node("span","acc-bal",money(r.balanceCents)));
     row.addEventListener("click",()=>openAccount(r.account.id));
     return row;
@@ -466,6 +475,10 @@
       $("account-meta").textContent = t("acc.meta",{kind: I.kindLabel(a.kind), archived: a.archived ? t("acc.metaArchived") : "", opening: money(a.openingCents), date: dateLabel(a.openingDate)});
       $("account-reconcile").hidden = a.archived;
       $("account-archive").textContent = t(a.archived ? "acc.unarchive" : "acc.archive");
+      const av = views.available(state, a.id);
+      $("account-avail").hidden = av === null;
+      if (av !== null) $("account-avail").textContent = t("acc.availLimit",{sum: money(av), limit: money(a.limitCents)});
+      renderLoanSec(a);
     }
   }
   function fillAccountFilter() {
@@ -896,10 +909,15 @@
   function syncDebtHint(autoMinus) {
     const debt = isDebtKind($("account-kind").value);
     $("account-kind-hint").hidden = !debt;
+    $("account-limit-field").hidden = $("account-kind").value !== "credit_card";
     const input = $("account-opening"), v = input.value.trim();
     if (autoMinus && debt && /^\d/.test(v)) input.value = "-" + v;
   }
-  $("account-kind").addEventListener("change",()=>syncDebtHint(!accountEditing));
+  $("account-kind").addEventListener("change",()=>{
+    // новый счёт вида «кредит» — отдельная простая форма кредита
+    if (!accountEditing && $("account-kind").value === "loan") { const name = $("account-name").value; closeSheet(); openLoanForm("new", {name}); return; }
+    syncDebtHint(!accountEditing);
+  });
   function openAccountForm(id) {
     accountEditing = id;
     const a = id && accById(id);
@@ -909,6 +927,7 @@
     if (a && !kinds.includes(a.kind)) kinds.push(a.kind);
     $("account-kind").replaceChildren(...kinds.map(k => { const o = document.createElement("option"); o.value = k; o.textContent = I.kindLabel(k); return o; }));
     $("account-kind").value = a ? a.kind : "debit";
+    $("account-limit").value = a && a.limitCents != null ? amountInput(a.limitCents) : "";
     syncDebtHint(!a);
     $("account-opening").value = a ? amountInput(a.openingCents) : "";
     $("account-date").value = a ? a.openingDate : today();
@@ -924,6 +943,11 @@
       const openingDate = $("account-date").value;
       if (!M.validDate(openingDate)) throw new Error(t("err.date"));
       const data = {name: $("account-name").value, kind: $("account-kind").value, openingCents, openingDate};
+      if (data.kind === "loan" && !accountEditing) { const name = data.name; closeSheet(); openLoanForm("new", {name}); return; }
+      if (data.kind === "credit_card") {
+        const limitRaw = $("account-limit").value.trim();
+        if (limitRaw) data.limitCents = M.parseAmount(limitRaw); else if (accountEditing) data.limitCents = null;
+      }
       if (accountEditing) commit(acct.updateAccount(state,accountEditing,data));
       else { const id = newId(); commit(acct.addAccount(state,{id,...data})); }
       closeSheet(); toast(t(accountEditing ? "msg.accSaved" : "msg.accAdded"));
@@ -960,7 +984,8 @@
       if (date > today()) throw new Error(t("err.reconFuture"));
       const res = journal.reconcile(state,reconAccount,bank,date,$("recon-note").value,newId(),new Date().toISOString());
       if (res.diff === 0) { closeSheet(); toast(t("msg.reconMatch")); return; }
-      commit(res.state); closeSheet(); toast(t("msg.reconDone",{diff: signed(res.diff)}));
+      const now = new Date().toISOString();
+      commit(loanOf(reconAccount) ? LN.refresh(res.state,reconAccount,today(),now) : res.state); closeSheet(); toast(t("msg.reconDone",{diff: signed(res.diff)}));
     } catch(e) { $("recon-error").textContent = I.err(e); }
   });
   ["recon-bank","recon-date"].forEach(id => $(id).addEventListener("input",updateRecon));
@@ -972,7 +997,7 @@
   }));
   $("add-account").addEventListener("click",()=>openAccountForm(null));
   $("nav-add-account").addEventListener("click",()=>openAccountForm(null));
-  $("account-edit").addEventListener("click",()=>openAccountForm(currentAccount));
+  $("account-edit").addEventListener("click",()=>{ const a = accById(currentAccount); if (a && a.kind === "loan") openLoanForm("edit",{accountId: a.id}); else openAccountForm(currentAccount); });
   $("account-reconcile").addEventListener("click",()=>openRecon(currentAccount));
   $("account-archive").addEventListener("click",()=>{
     const a = accById(currentAccount); if (!a) return;
@@ -2018,11 +2043,12 @@
   const schedById = id => state.schedules.find(s => s.id === id);
   const kindOf = sc => sc.template || (sc.type === "income" ? "income" : sc.subscription ? "subscription" : "fixed");
   const isVar = sc => sc.amountMode === "variable";
-  // сумма правила для списков: у variable — оценка со знаком «~» или «нет оценки»
+  // сумма правила для списков: у variable — оценка с «~» перед знаком (число и знак как у соседних строк) или «нет оценки»
+  const approx = (type, cents) => `~${planSign(type)}${money(Math.abs(cents))}`;
   function schAmount(sc) {
     if (!isVar(sc)) return `${planSign(sc.type)}${money(sc.amountCents)}`;
     const e = SCH.estimate(state, sc.id);
-    return e > 0 ? `~${money(e)}` : t("plans.noEstimate");
+    return e > 0 ? approx(sc.type, e) : t("plans.noEstimate");
   }
 
   // ----- плашка на главном экране -----
@@ -2040,11 +2066,11 @@
       const sc = schedById(first.scheduleId), isToday = first.dueDate === td, aw = first.status === "awaiting";
       const moreToday = todays.length - (isToday ? 1 : 0), moreLate = late.length - (isToday ? 0 : 1);
       const text = node("span", "pb-text");
-      const amt = aw ? (first.noEstimate ? t("plans.noEstimate") : `~${money(first.amountCents)}`) : `${planSign(sc.type)}${money(sc.amountCents)}`;
+      const amt = aw ? (first.noEstimate ? t("plans.noEstimate") : approx(sc.type, first.amountCents)) : `${planSign(sc.type)}${money(sc.amountCents)}`;
       text.append(node("span", "tag warn", "[!]"), document.createTextNode(` ${aw ? t("banner.awaiting") : t(isToday ? "banner.today" : "banner.overdue")}: ${sc.name} ${amt}`));
       const ok = node("button", "bracket pb-btn", aw ? t("plans.enter") : t("plans.confirm")); ok.type = "button";
       ok.setAttribute("aria-label", t(aw ? "plans.enterAria" : "plans.confirmAria", {name: sc.name}));
-      ok.addEventListener("click", () => aw ? openBillSheet(sc, first.dueDate) : openPlanConfirm(sc, first.dueDate));
+      ok.addEventListener("click", () => aw ? openBillSheet(sc, first.dueDate) : confirmPlan(sc, first.dueDate));
       text.append(document.createTextNode(" "), ok);
       const more = [moreToday > 0 ? t("banner.moreToday", {n: moreToday}) : "", moreLate > 0 ? t("banner.moreOverdue", {n: moreLate}) : ""].filter(Boolean);
       if (more.length) text.append(document.createTextNode(" · " + more.join(" · ")));
@@ -2066,6 +2092,10 @@
   }
 
   // ----- подтверждение платежа через форму записи -----
+  // платёж по кредиту подтверждается своей шторкой (сумма, счёт, дата), остальные — формой записи
+  function confirmPlan(sc, dueDate) {
+    if (kindOf(sc) === "loan" && sc.toAccountId && accById(sc.toAccountId)) openLoanPay(sc.toAccountId, dueDate); else openPlanConfirm(sc, dueDate);
+  }
   function openPlanConfirm(sc, dueDate) {
     resetForm();
     planLink = {scheduleId: sc.id, dueDate};
@@ -2096,14 +2126,14 @@
     row.append(node("span", "pl-mark", done ? "[✓]" : late ? "[!]" : planMark(sc.type)));
     row.append(node("span", "pl-title", `${anDay(o.dueDate)} · ${sc.name}`));
     const cents = op ? amountOf(op) : o.amountCents;
-    row.append(node("span", `pl-amt ${sc.type}`, !done && variable ? (o.noEstimate ? t("plans.noEstimate") : `~${money(cents)}`) : `${planSign(sc.type)}${money(cents)}`));
+    row.append(node("span", `pl-amt ${sc.type}`, !done && variable ? (o.noEstimate ? t("plans.noEstimate") : approx(sc.type, cents)) : `${planSign(sc.type)}${money(cents)}`));
     const meta = node("div", "pl-meta");
     if (done) {
       let text = t("plans.done." + sc.type);
       const dev = variable ? null : SCH.deviation(state, o.opId);
       if (dev) text += " " + t("plans.dev", {sum: signed(dev)});
       meta.append(node("span", "pl-state", text));
-      if (op) {
+      if (op && op.type !== "loan_payment") {
         const ed = node("button", "bracket", t("plans.edit")); ed.type = "button";
         ed.setAttribute("aria-label", t("plans.editAria", {name: sc.name}));
         ed.addEventListener("click", () => edit(op));
@@ -2114,7 +2144,7 @@
       meta.append(node("span", "pl-state", o.status === "awaiting" ? t("plans.awaiting") : o.status === "overdue" ? t("plans.overdueBy", {n: -d}) : d === 0 ? t("plans.today") : t("plans.inDays", {n: d})));
       const ok = node("button", "bracket pl-ok", variable ? t("plans.enter") : t("plans.confirm")); ok.type = "button";
       ok.setAttribute("aria-label", t(variable ? "plans.enterAria" : "plans.confirmAria", {name: sc.name}));
-      ok.addEventListener("click", () => variable ? openBillSheet(sc, o.dueDate) : openPlanConfirm(sc, o.dueDate));
+      ok.addEventListener("click", () => variable ? openBillSheet(sc, o.dueDate) : confirmPlan(sc, o.dueDate));
       const skip = node("button", "bracket", t("plans.skip")); skip.type = "button";
       skip.setAttribute("aria-label", t("plans.skipAria", {name: sc.name}));
       skip.addEventListener("click", () => {
@@ -2230,7 +2260,7 @@
   // правило кредита правится на экране кредита (раздел B), «по счёту» открывается экраном с историей
   function openPlanEntry(sc) {
     const k = kindOf(sc);
-    if (k === "loan") { toast(t("plans.loanStub")); return; }
+    if (k === "loan") { if (sc.toAccountId && accById(sc.toAccountId)) openAccount(sc.toAccountId); else toast(t("loan.notFound")); return; }
     if (k === "bill") { openBillView(sc.id); return; }
     openPlanForm(sc.id);
   }
@@ -2716,6 +2746,146 @@
     } catch (e) { $("bv-error").textContent = I.err(e); }
   });
   $("bv-edit").addEventListener("click", () => { const id = bvId; closeSheet(); openPlanForm(id); });
+
+  // ---------- кредиты: просто «сколько осталось», ежемесячный платёж и внесённое ----------
+  // кредит = счёт kind loan (остаток отрицательный) + правило регулярного платежа template "loan" (перевод со счёта платежа на кредит)
+  const LN = globalThis.MoneyCore.loans;
+  const loanOf = id => (state.loans || []).find(l => l.accountId === id) || null; // кредит со ставкой/графиком из прежней версии
+  const loanRule = id => state.schedules.find(s => s.template === "loan" && s.toAccountId === id && !s.archived) || null;
+  const payFromList = () => acct.activeAccounts(state).filter(a => a.kind !== "loan" && a.kind !== "person");
+  function fillPayFrom(sel, value, allowEmpty) {
+    const list = payFromList().slice(), cur = value && accById(value);
+    if (cur && !list.includes(cur) && cur.kind !== "loan") list.push(cur);
+    fillSelect(sel, list, value);
+    if (allowEmpty) { sel.prepend(opt("", t("loan.f.fromNone"))); if (!value || !list.some(a => a.id === value)) sel.value = ""; }
+  }
+  const loanDayOptions = () => Array.from({length: 31}, (_, i) => opt(String(i + 1), i === 30 ? `31 · ${t("plans.r.last")}` : String(i + 1)));
+  // платежи на кредит: переводы (и платежи прежних кредитов) с положительной ногой на этом счёте
+  const loanPayments = id => state.operations.filter(o => !o.deleted && (o.type === "transfer" || o.type === "loan_payment") && o.legs.some(l => l.accountId === id && l.amountCents > 0))
+    .sort((x, y) => y.date.localeCompare(x.date) || y.createdAt.localeCompare(x.createdAt));
+  const paidIn = (o, id) => o.legs.filter(l => l.accountId === id && l.amountCents > 0).reduce((s, l) => s + l.amountCents, 0);
+  // ближайший неподтверждённый платёж по правилу кредита
+  function loanNext(sc) {
+    const td = today();
+    return SCH.occurrences(state, {from: addDays(td, -60), to: addDays(td, 400), today: td}).find(o => o.scheduleId === sc.id && o.status !== "confirmed" && o.status !== "skipped") || null;
+  }
+
+  // ----- форма: новый кредит / изменить -----
+  let loanForm = {mode: "new", accountId: null};
+  function openLoanForm(mode, preset = {}) {
+    loanForm = {mode, accountId: preset.accountId || null};
+    const a = mode === "edit" ? accById(preset.accountId) : null, sc = a && loanRule(a.id);
+    $("loan-title").textContent = t(mode === "edit" ? "loan.editTitle" : "loan.newTitle");
+    $("loan-name").value = a ? I.stored(a.name) : (preset.name || "");
+    $("loan-owed-field").hidden = mode === "edit";
+    $("loan-amount").value = "";
+    $("loan-pay").value = sc ? amountInput(sc.amountCents) : "";
+    $("loan-day").replaceChildren(...loanDayOptions());
+    $("loan-day").value = String(sc ? sc.rule.day : +today().slice(8, 10));
+    fillPayFrom($("loan-from"), sc && sc.accountId, true);
+    $("loan-error").textContent = "";
+    openSheet($("loan-box"));
+    $("loan-name").focus();
+  }
+  $("loan-close").addEventListener("click", closeSheet);
+  $("loan-form").addEventListener("submit", event => {
+    event.preventDefault(); $("loan-error").textContent = "";
+    try {
+      const name = $("loan-name").value;
+      const monthly = M.parseAmount($("loan-pay").value), day = +$("loan-day").value, now = nowISO();
+      const from = $("loan-from").value || (payFromList()[0] || {}).id;
+      if (!from) throw new Error(t("err.pickAccount"));
+      const rule = {freq: "monthly", interval: 1, day};
+      if (loanForm.mode === "new") {
+        const owed = M.parseAmount($("loan-amount").value), id = newId();
+        let next = acct.addAccount(state, {id, name, kind: "loan", openingCents: -owed, openingDate: today()}, now);
+        next = SCH.addSchedule(next, {id: newId(), type: "transfer", name: name.trim(), amountCents: monthly, accountId: from, toAccountId: id, template: "loan", amountMode: "fixed", rule, startDate: today(), endDate: null}, now);
+        commit(next); closeSheet(); openAccount(id); toast(t("msg.loanAdded"));
+      } else {
+        const id = loanForm.accountId, sc = loanRule(id);
+        let next = acct.updateAccount(state, id, {name}, now);
+        const patch = {name: name.trim(), amountCents: monthly, accountId: from, rule};
+        next = sc ? SCH.updateSchedule(next, sc.id, patch, now)
+          : SCH.addSchedule(next, {id: newId(), type: "transfer", toAccountId: id, template: "loan", amountMode: "fixed", startDate: today(), endDate: null, ...patch}, now);
+        commit(next); closeSheet(); toast(t("msg.loanSaved"));
+      }
+    } catch (e) { $("loan-error").textContent = I.err(e); }
+  });
+
+  // ----- экран кредита -----
+  const lnLine = (text, value, cls = "") => {
+    const line = node("div", `ln-line ${cls}`.trim());
+    line.append(node("span", "", text));
+    if (value !== undefined) line.append(node("strong", "", value));
+    return line;
+  };
+  function renderLoanSec(a) {
+    const isLoan = a.kind === "loan", host = $("loan-sec");
+    host.hidden = !isLoan;
+    $("account-pre").hidden = !isLoan;
+    $("account-meta").hidden = isLoan;
+    $("account-loan-pay").hidden = !isLoan || a.archived;
+    if (!isLoan) return;
+    $("account-pre").textContent = t("loan.left");
+    const bal = views.balances(state).byAccount[a.id], debt = Math.max(0, -bal), sc = loanRule(a.id);
+    const hist = loanPayments(a.id), paid = hist.reduce((s, o) => s + paidIn(o, a.id), 0);
+    const pct = paid + debt > 0 ? paid / (paid + debt) * 100 : 0;
+    const nodes = [lnLine("-- " + t("loan.paid"), money(paid))];
+    if (sc) {
+      const next = loanNext(sc);
+      nodes.push(lnLine("-- " + t("loan.monthly", {sum: money(sc.amountCents)}) + (next ? " · " + t("loan.nextDay", {day: anDay(next.dueDate)}) : "")));
+    } else nodes.push(node("div", "muted", "-- " + t("loan.noRule")));
+    const bar = node("div", "ln-bar"); bar.innerHTML = barSvg(pct); bar.firstChild.setAttribute("role", "img"); bar.firstChild.setAttribute("aria-label", t("loan.progressAria", {pct: Math.round(pct)}));
+    nodes.push(bar, node("div", "muted", t("loan.progress", {paid: money(paid), total: money(paid + debt), pct: new Intl.NumberFormat(I.locale(), {maximumFractionDigits: pct > 0 && pct < 10 ? 1 : 0}).format(pct)})));
+    nodes.push(node("div", "ln-h", t("loan.history")));
+    if (!hist.length) nodes.push(node("div", "muted", t("loan.historyEmpty")));
+    else {
+      const list = node("div", "ln-hist");
+      for (const o of hist.slice(0, 12)) {
+        const row = node("div", "ln-hist-row");
+        row.append(node("span", "", anDay(o.date)), node("strong", "", money(paidIn(o, a.id))), node("span", "muted", accName(opFrom(o)) + " → " + accName(a.id)));
+        list.append(row);
+      }
+      nodes.push(list);
+    }
+    host.replaceChildren(...nodes);
+  }
+  $("account-loan-pay").addEventListener("click", () => openLoanPay(currentAccount, null));
+
+  // ----- платёж по кредиту: обычный перевод со ссылкой на правило -----
+  let lp = null;
+  function openLoanPay(accountId, dueDate) {
+    const a = accById(accountId); if (!a) return;
+    const sc = loanRule(accountId), td = today(), next = sc ? loanNext(sc) : null;
+    const due = sc ? (dueDate || (next && next.dueDate) || null) : null;
+    lp = {accountId, scheduleId: sc ? sc.id : null, dueDate: due};
+    $("lpay-title").textContent = t("loan.p.title", {name: I.stored(a.name)});
+    $("lpay-amount").value = sc ? amountInput(sc.amountCents) : "";
+    fillPayFrom($("lpay-from"), sc && sc.accountId);
+    $("lpay-date").value = due && due < td ? due : td;
+    $("lpay-error").textContent = "";
+    openSheet($("lpay-box"));
+    $("lpay-amount").focus();
+  }
+  $("lpay-close").addEventListener("click", closeSheet);
+  $("lpay-form").addEventListener("submit", event => {
+    event.preventDefault(); $("lpay-error").textContent = "";
+    try {
+      const amount = M.parseAmount($("lpay-amount").value), date = $("lpay-date").value, from = $("lpay-from").value;
+      if (!M.validDate(date)) throw new Error(t("err.date"));
+      if (date > today()) throw new Error(t("err.future"));
+      if (!from) throw new Error(t("err.pickAccount"));
+      const now = nowISO(), sc = lp.scheduleId && schedById(lp.scheduleId);
+      let op;
+      if (sc && lp.dueDate && loanOf(lp.accountId)) op = LN.paymentOp(state, sc.id, lp.dueDate, {amountCents: amount, date, id: newId(), now}); // кредит прежней версии: со своим графиком
+      else if (sc && lp.dueDate) op = SCH.confirmOp(sc, lp.dueDate, {amountCents: amount, date, id: newId(), now, loans: state.loans});
+      else op = journal.makeTransfer({id: newId(), fromId: from, toId: lp.accountId, amountCents: amount, date, note: accName(lp.accountId), now});
+      op.legs[0].accountId = from;
+      let next = journal.upsertOperation(state, op, now);
+      if (loanOf(lp.accountId)) next = LN.refresh(next, lp.accountId, today(), now);
+      commit(next); closeSheet(); toast(t("msg.loanPaid"));
+    } catch (e) { $("lpay-error").textContent = I.err(e); }
+  });
 
   function applyLanguage() {
     I.setLang(I.resolve(settings.lang));

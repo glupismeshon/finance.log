@@ -127,8 +127,10 @@
     return out.sort((a, b) => a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : a.scheduleId < b.scheduleId ? -1 : a.scheduleId > b.scheduleId ? 1 : 0);
   }
 
-  function confirmOp(schedule, dueDate, {amountCents, date, id, now} = {}) {
-    if (schedule.template === "loan") throw new Error("Платёж по кредиту подтверждается через MoneyCore.loans.paymentOp.");
+  // loans — state.loans: правило loan с записью кредита (график, проценты) подтверждается через loans.paymentOp;
+  // простой кредит (без записи в loans) подтверждается как обычный перевод; без аргумента loans — прежняя строгая проверка
+  function confirmOp(schedule, dueDate, {amountCents, date, id, now, loans} = {}) {
+    if (schedule.template === "loan" && (!loans || loans.some(l => l.scheduleId === schedule.id))) throw new Error("Платёж по кредиту подтверждается через MoneyCore.loans.paymentOp.");
     const amt = amountCents === undefined ? schedule.amountCents : amountCents;
     if (!Number.isSafeInteger(amt) || amt <= 0) throw new Error("Сумма должна быть больше нуля.");
     const cat = schedule.categoryId == null ? null : schedule.categoryId;
