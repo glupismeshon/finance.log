@@ -1096,6 +1096,76 @@
     }
   }
 
+  // ---------- аккаунт ----------
+  const auth = {state: "loading", me: null, config: null, error: null};
+  const AUTH_HEADERS = {"X-Requested-With": "finance.log"};
+  async function authFetch(path, opts = {}) {
+    const r = await fetch(path, {credentials: "same-origin", ...opts, headers: {...AUTH_HEADERS, ...(opts.headers || {})}});
+    let body = null;
+    try { body = await r.json(); } catch {}
+    return {ok: r.ok, status: r.status, body};
+  }
+  async function loadAccount() {
+    try {
+      const [c, m] = await Promise.all([authFetch("/api/config"), authFetch("/api/me")]);
+      if (!c.ok || !c.body || (m.status !== 200 && m.status !== 401)) throw new Error("api");
+      auth.config = c.body;
+      auth.me = m.status === 200 ? m.body : null;
+      auth.state = auth.me ? "in" : "out";
+    } catch { auth.state = "offline"; auth.me = null; }
+    renderAccount();
+  }
+  function authLink(textKey, href) {
+    const a = node("a", "bracket", t(textKey)); a.href = href; return a;
+  }
+  function authButton(textKey, handler) {
+    const b = node("button", "bracket", t(textKey)); b.type = "button"; b.addEventListener("click", handler); return b;
+  }
+  async function authPost(path, method = "POST") {
+    try { await authFetch(path, {method}); } catch {}
+    return loadAccount();
+  }
+  function renderAccount() {
+    const box = $("account-box");
+    if (!box) return;
+    const rows = [];
+    if (auth.error) rows.push(node("p", "auth-line warn", ["identity_in_use", "access_denied", "last_identity"].includes(auth.error) ? t("auth.err." + auth.error) : t("auth.err.other", {code: auth.error})));
+    if (auth.state === "loading") rows.push(node("p", "muted auth-line", t("auth.loading")));
+    else if (auth.state === "offline") rows.push(node("p", "muted auth-line", t("auth.offline")));
+    else if (auth.state === "out") {
+      rows.push(node("p", "muted auth-line", t("auth.loggedOut")));
+      const actions = node("div", "auth-actions");
+      if (auth.config.google) actions.append(authLink("auth.google", "/api/auth/google/start"));
+      if (auth.config.telegram) actions.append(authLink("auth.telegram", "/api/auth/telegram/start"));
+      rows.push(actions);
+    } else {
+      const me = auth.me, byProvider = {};
+      for (const i of me.identities) byProvider[i.provider] = i;
+      const head = node("div", "auth-user");
+      if (me.user.avatar) {
+        const img = node("img", "auth-avatar"); img.src = me.user.avatar; img.alt = t("auth.avatarAlt");
+        img.referrerPolicy = "no-referrer"; head.append(img);
+      }
+      head.append(node("span", "", me.user.name || (byProvider.google && byProvider.google.email) || (byProvider.telegram && byProvider.telegram.email) || "—"));
+      rows.push(head);
+      const g = byProvider.google, tg = byProvider.telegram, none = t("auth.none");
+      rows.push(node("p", "muted auth-line", t("auth.providers", {google: g ? (g.email || g.name || "✓") : none, telegram: tg ? (tg.email || tg.name || "✓") : none})));
+      const actions = node("div", "auth-actions");
+      if (!g && auth.config.google) actions.append(authLink("auth.linkGoogle", "/api/auth/google/start?link=1"));
+      if (!tg && auth.config.telegram) actions.append(authLink("auth.linkTelegram", "/api/auth/telegram/start?link=1"));
+      actions.append(authButton("auth.logout", () => authPost("/api/auth/logout")));
+      actions.append(authButton("auth.logoutAll", () => authPost("/api/auth/logout-all")));
+      rows.push(actions);
+    }
+    box.replaceChildren(...rows);
+  }
+  function handleAuthReturn() {
+    const q = new URLSearchParams(location.search), code = q.get("auth_error");
+    if (!code) return;
+    auth.error = code.replace(/[^a-z_]/g, "");
+    history.replaceState(null, "", location.pathname + location.hash);
+  }
+
   // ---------- фильтр журнала по дню ----------
   function renderDayBar() {
     $("day-bar").hidden = !dayFilter;
@@ -1335,6 +1405,7 @@
     $("today-label").textContent = I.fmtDate(new Date(),"short");
     updateThemeButton();
     renderSettings();
+    renderAccount();
     applyPrivacy();
     applyHints();
     render();
@@ -1380,7 +1451,10 @@
     settings=boot.get();
     if(I.resolve(settings.lang)!==I.getLang())applyLanguage();else { renderSettings(); syncPrivacy(); applyHints(); }
   });
+  handleAuthReturn();
   applyLanguage();
+  loadAccount();
+  if (location.hash === "#settings") setTab("settings");
   resetForm();
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
 })();

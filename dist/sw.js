@@ -1,5 +1,5 @@
 "use strict";
-const CACHE = "finance-log-v19";
+const CACHE = "finance-log-v21";
 const ASSETS = [
   "./",
   "index.html",
@@ -41,7 +41,8 @@ self.addEventListener("activate", event => {
 // Network-first: fresh content when online, cached copy when offline.
 self.addEventListener("fetch", event => {
   const request = event.request;
-  if (request.method !== "GET" || new URL(request.url).origin !== self.location.origin) return;
+  const url = new URL(request.url);
+  if (request.method !== "GET" || url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
   event.respondWith(
     fetch(request)
       .then(response => {
