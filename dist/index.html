@@ -316,6 +316,17 @@
     </main>
 
     <div class="side">
+      <section class="box s-journal" id="login-box" aria-labelledby="login-label" hidden>
+        <h2 class="box-label" id="login-label" data-i18n="login.title"></h2>
+        <div class="box-body">
+          <div class="log-lines">
+            <div class="log-line login-line"><span class="tag ok">[ok]</span><span class="log-name" data-i18n="login.loaded"></span></div>
+          </div>
+          <p class="muted login-hint" data-i18n="login.hint"></p>
+          <div class="login-actions" id="login-actions"></div>
+        </div>
+      </section>
+
       <section class="box s-journal" id="balance-box" aria-labelledby="balance-label">
         <h2 class="box-label" id="balance-label" data-i18n="balance.title"></h2>
         <div class="box-body">
@@ -484,6 +495,19 @@
         <button class="btn primary" id="sync-merge" type="button" data-i18n="sync.dlg.merge"></button>
         <button class="btn" id="sync-replace" type="button" data-i18n="sync.dlg.replace"></button>
         <button class="btn" id="sync-cancel" type="button" data-i18n="sync.dlg.cancel"></button>
+      </div>
+    </div>
+  </dialog>
+  <dialog id="handle-dialog" aria-labelledby="handle-title">
+    <h2 class="box-label" id="handle-title" data-i18n="handle.title"></h2>
+    <div class="dialog-body">
+      <p class="muted" id="handle-sub"></p>
+      <label class="handle-field"><span class="handle-at" aria-hidden="true">@</span>
+        <input id="handle-input" type="text" inputmode="text" maxlength="24" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" data-i18n-aria-label="auth.handleLabel"></label>
+      <div id="handle-status" class="handle-status muted" role="status" aria-live="polite"></div>
+      <div class="sync-dlg-actions">
+        <button class="btn primary" id="handle-save" type="button" data-i18n="handle.save"></button>
+        <button class="btn" id="handle-keep" type="button"></button>
       </div>
     </div>
   </dialog>

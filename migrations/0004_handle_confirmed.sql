@@ -1,0 +1,1 @@
+ALTER TABLE users ADD COLUMN handle_confirmed INTEGER DEFAULT 0;

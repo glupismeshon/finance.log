@@ -708,3 +708,23 @@ button.an-row:hover .an-name, button.an-row:focus-visible .an-name { color: var(
   .sync-ind .sync-full { display: none; }
   .sync-ind .sync-short { display: inline; font-size: 16px; }
 }
+
+/* ---------- Вход на главном экране и выбор ника ---------- */
+#login-box[hidden] { display: none; }
+.login-hint { margin: 6px 0 0; }
+.login-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin-top: 10px; }
+.login-actions .bracket { text-decoration: none; display: inline-flex; align-items: center; }
+.login-actions .login-later { margin-left: auto; }
+.handle-field { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+.handle-field input { flex: 1; min-width: 0; font-size: 16px; }
+.handle-at { color: var(--muted); }
+.handle-status { min-height: 1.6em; margin-top: 6px; }
+.handle-status.warn { color: var(--warn); }
+#handle-dialog .sync-dlg-actions { margin-top: 10px; }
+@media (max-width: 599px) {
+  #login-box { order: 0; }
+  body[data-trash] #login-box { display: none; }
+  .login-actions .bracket { min-height: 44px; padding: 0 2px; }
+  /* шторка снизу */
+  #handle-dialog { inset: auto 0 0 0; margin: 0; width: 100%; max-width: none; border-radius: 6px 6px 0 0; border-bottom: 0; padding-bottom: env(safe-area-inset-bottom); }
+}

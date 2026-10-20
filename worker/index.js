@@ -14,6 +14,7 @@ export default {
       if (m === "GET") {
         if (p === "/api/config") return auth.config(env);
         if (p === "/api/me") return await auth.me(env, request);
+        if (p === "/api/handle/check") return await auth.checkMyHandle(env, request, url);
         if (p === "/api/sync/stats") return await syncApi.stats(env, request);
         if (p === "/api/auth/google/start") return await auth.googleStart(env, request, url);
         if (p === "/api/auth/google/callback") return await auth.googleCallback(env, request, url);
@@ -21,6 +22,7 @@ export default {
         if (p === "/api/auth/telegram/callback") return auth.telegramCallback(env, url);
       } else if (m === "POST") {
         if (p === "/api/auth/telegram") return await auth.telegramLogin(env, request);
+        if (p === "/api/me/handle/confirm") return await auth.confirmMyHandle(env, request);
         if (p === "/api/sync") return await syncApi.sync(env, request);
         if (p === "/api/auth/logout") return await auth.logout(env, request, false);
         if (p === "/api/auth/logout-all") return await auth.logout(env, request, true);

@@ -1,6 +1,6 @@
 import {
   json, err, cookie, parseCookies, randomToken, pkceChallenge, signValue, verifyValue,
-  csrfOk, verifyTelegram, parseIdToken, safeAvatar, SESSION_TTL, validHandle
+  csrfOk, verifyTelegram, parseIdToken, safeAvatar, SESSION_TTL, validHandle, checkHandle
 } from "./util.js";
 import * as db from "./db.js";
 
@@ -55,7 +55,7 @@ export async function me(env, request) {
   if (!u) return err("unauthorized", 401);
   const extra = await db.meData(env, u.userId);
   const handle = u.handle || await db.ensureHandle(env, u.userId);
-  return json({user: {id: u.userId, name: u.name, avatar: u.avatar, handle}, identities: extra.identities, sessions: extra.sessions});
+  return json({user: {id: u.userId, name: u.name, avatar: u.avatar, handle, handleConfirmed: u.handleConfirmed}, identities: extra.identities, sessions: extra.sessions});
 }
 
 export async function patchMe(env, request) {
@@ -65,9 +65,25 @@ export async function patchMe(env, request) {
   try { body = await request.json(); } catch { return err("bad_request", 400); }
   const handle = body && typeof body === "object" ? body.handle : null;
   if (!validHandle(handle)) return err("bad_handle", 400);
-  if (handle === u.handle) return json({ok: true, handle});
+  if (handle === u.handle) { await db.confirmHandle(env, u.userId); return json({ok: true, handle}); }
   if (await db.setHandle(env, u.userId, handle) === "taken") return err("handle_taken", 409);
   return json({ok: true, handle});
+}
+
+export async function confirmMyHandle(env, request) {
+  const u = await currentUser(env, request);
+  if (!u) return err("unauthorized", 401);
+  if (!u.handle) await db.ensureHandle(env, u.userId);
+  await db.confirmHandle(env, u.userId);
+  return json({ok: true});
+}
+
+export async function checkMyHandle(env, request, url) {
+  const u = await currentUser(env, request);
+  if (!u) return err("unauthorized", 401);
+  const h = url.searchParams.get("h");
+  const r = checkHandle(h, u.handle, validHandle(h) && h !== u.handle && await db.handleTakenByOther(env, h, u.userId));
+  return json(r, 200, {"cache-control": "no-store"});
 }
 
 export async function logout(env, request, all) {

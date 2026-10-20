@@ -130,3 +130,13 @@ test("CSRF: PATCH тоже защищён", async () => {
   assert.equal(U.csrfOk(mk({}), O), false);
   assert.equal(U.csrfOk(mk({"x-requested-with": "finance.log", origin: O}), O), true);
 });
+test("ник: проверка check (формат, занят, свой)", async () => {
+  const U = await load();
+  assert.deepEqual(U.checkHandle("ab", "ann", false), {error: "bad_handle"});
+  assert.deepEqual(U.checkHandle("Admin", "ann", false), {error: "bad_handle"});
+  assert.deepEqual(U.checkHandle("admin", "ann", false), {error: "bad_handle"});
+  assert.deepEqual(U.checkHandle(null, "ann", false), {error: "bad_handle"});
+  assert.deepEqual(U.checkHandle("bob", "ann", true), {error: "handle_taken"});
+  assert.deepEqual(U.checkHandle("bob", "ann", false), {ok: true});
+  assert.deepEqual(U.checkHandle("ann", "ann", true), {ok: true}); // свой ник свободен
+});

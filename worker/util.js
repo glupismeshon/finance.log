@@ -167,6 +167,13 @@ export const HANDLE_RE = /^[a-z0-9_-]{3,24}$/;
 export const HANDLE_RESERVED = ["admin", "root", "api", "support", "finance", "financelog", "system"];
 export const validHandle = h => typeof h === "string" && HANDLE_RE.test(h) && !HANDLE_RESERVED.includes(h);
 
+// Результат проверки ника: свой текущий ник считается свободным. takenByOther — занят ли он другим пользователем.
+export function checkHandle(h, own, takenByOther) {
+  if (!validHandle(h)) return {error: "bad_handle"};
+  if (h !== own && takenByOther) return {error: "handle_taken"};
+  return {ok: true};
+}
+
 // Нормализация произвольной строки: нижний регистр, недопустимое → «-», не длиннее 24. Результат может быть коротким/пустым.
 export function normalizeHandle(s) {
   return String(s ?? "").toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24).replace(/-+$/, "");

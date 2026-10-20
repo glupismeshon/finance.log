@@ -1270,7 +1270,66 @@
       dlg.showModal();
     });
   }
+  const HANDLE_OK = /^[a-z0-9_-]{3,24}$/, HANDLE_BAD = ["admin", "root", "api", "support", "finance", "financelog", "system"];
   let onboarding = false;
+  // ---- шаг выбора ника (до диалога синхронизации) ----
+  let handleStep = null;
+  function askHandle() {
+    return new Promise(resolve => {
+      const dlg = $("handle-dialog"), inp = $("handle-input"), status = $("handle-status"), save = $("handle-save"), keep = $("handle-keep");
+      const cur = auth.me.user.handle || "";
+      let seq = 0, timer = null, ok = false, busy = false, done = false;
+      const show = (key, ready) => { status.textContent = key ? t(key) : ""; status.classList.toggle("warn", key === "handle.taken" || key === "handle.bad" || key === "handle.error"); ok = ready; save.disabled = !ready || busy; };
+      const val = () => inp.value.trim().toLowerCase();
+      const localOk = h => HANDLE_OK.test(h) && !HANDLE_BAD.includes(h);
+      const sub = () => { $("handle-sub").textContent = t("handle.sub", {handle: val() || "…"}); };
+      const check = () => {
+        clearTimeout(timer); const my = ++seq, h = val(); sub();
+        if (h === cur) { show("handle.free", true); return; }
+        if (!localOk(h)) { show("handle.bad", false); return; }
+        show("handle.checking", false);
+        timer = setTimeout(async () => {
+          let r;
+          try { r = await authFetch("/api/handle/check?h=" + encodeURIComponent(h)); } catch { r = null; }
+          if (my !== seq || done) return;
+          const b = r && r.body;
+          if (b && b.ok) show("handle.free", true);
+          else if (b && b.error === "handle_taken") show("handle.taken", false);
+          else if (b && b.error === "bad_handle") show("handle.bad", false);
+          else show("handle.error", false);
+        }, 300);
+      };
+      const fin = v => { if (done) return; done = true; clearTimeout(timer); seq++; if (dlg.open) dlg.close(); resolve(v); };
+      const submit = async (confirmOnly) => {
+        const h = confirmOnly ? cur : val();
+        if (busy || (!confirmOnly && !ok)) return;
+        busy = true; save.disabled = true; keep.disabled = true;
+        try {
+          const r = h === cur
+            ? await authFetch("/api/me/handle/confirm", {method: "POST"})
+            : await authFetch("/api/me", {method: "PATCH", headers: {"Content-Type": "application/json"}, body: JSON.stringify({handle: h})});
+          if (r.ok) { const changed = h !== cur; auth.me.user.handle = h; auth.me.user.handleConfirmed = true; return fin(changed); }
+          show(r.status === 409 ? "handle.taken" : r.status === 400 ? "handle.bad" : "handle.error", false);
+        } catch { show("handle.error", false); }
+        busy = false; keep.disabled = false; save.disabled = !ok;
+      };
+      keep.textContent = t("handle.keep", {handle: cur});
+      inp.value = cur; keep.disabled = false;
+      show("handle.free", true); sub();
+      inp.oninput = () => { const v = inp.value.toLowerCase(); if (v !== inp.value) inp.value = v; check(); };
+      inp.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); submit(false); } };
+      save.onclick = () => submit(false);
+      keep.onclick = () => submit(true);
+      dlg.oncancel = e => { e.preventDefault(); fin(false); }; // Esc: отложить, спросим при следующем входе
+      dlg.showModal();
+      inp.focus(); inp.select();
+    });
+  }
+  function ensureHandleStep() {
+    if (auth.state !== "in" || auth.me.user.handleConfirmed !== false) return Promise.resolve();
+    if (!handleStep) handleStep = askHandle().then(changed => { if (changed && animOn()) playBrand(); renderAccount(); }).finally(() => { handleStep = null; });
+    return handleStep;
+  }
   async function startOnboarding() {
     if (onboarding || auth.state !== "in") return;
     onboarding = true; syncHold = true; syncUi();
@@ -1328,7 +1387,9 @@
     } catch (e) { sync.lastError = failure(e); saveSync(); }
     syncUi();
   }
-  function onSignedIn() {
+  async function onSignedIn() {
+    await ensureHandleStep();
+    if (auth.state !== "in") return;
     if (sync.userId === auth.me.user.id) { runSync(); refreshStats(); }
     else if (sync.declined !== auth.me.user.id) startOnboarding();
   }
@@ -1396,7 +1457,6 @@
   }
   // ---- ник в аккаунте ----
   let handleEditing = false, handleDraft = "", handleError = "", handleBusy = false, handleEl = null;
-  const HANDLE_OK = /^[a-z0-9_-]{3,24}$/, HANDLE_BAD = ["admin", "root", "api", "support", "finance", "financelog", "system"];
   async function saveHandle() {
     const h = handleDraft.trim().toLowerCase();
     if (!HANDLE_OK.test(h) || HANDLE_BAD.includes(h)) { handleError = t("auth.handleErr.bad"); renderAccount(); return; }
@@ -1499,7 +1559,20 @@
     e.preventDefault(); playBrand();
   });
   window.addEventListener("resize", () => { if (!animating) brandFinal(); });
+  function renderLogin() {
+    const box = $("login-box");
+    const show = auth.state === "out" && !!auth.config && !settings.onboardingDismissed;
+    box.hidden = !show;
+    if (!show) return;
+    const actions = [];
+    if (auth.config.telegram) actions.push(authLink("auth.telegram", "/api/auth/telegram/start"));
+    if (auth.config.google) actions.push(authLink("auth.google", "/api/auth/google/start"));
+    const later = authButton("login.later", () => { persistNotice(boot.set({onboardingDismissed: true})); settings = boot.get(); renderLogin(); });
+    later.classList.add("login-later");
+    $("login-actions").replaceChildren(...actions, later);
+  }
   function renderAccount() {
+    renderLogin();
     if (!animating && animStarted) brandFinal();
     renderIndicator();
     renderNotes();

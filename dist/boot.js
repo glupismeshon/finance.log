@@ -2,7 +2,7 @@
   "use strict";
   // Читает настройки и применяет тему до отрисовки (подключается синхронно в <head> после themes.js).
   const KEY = "money.log.settings", OLD_THEME_KEY = "money.log.theme";
-  const DEFAULTS = {lang: "auto", themeMode: "auto", darkTheme: "githubDark", lightTheme: "ayuLight", privacy: false, privacyOnStart: false, hints: true, titleAnim: true};
+  const DEFAULTS = {lang: "auto", themeMode: "auto", darkTheme: "githubDark", lightTheme: "ayuLight", privacy: false, privacyOnStart: false, hints: true, titleAnim: true, onboardingDismissed: false};
   const themes = (root.MoneyCore && root.MoneyCore.themes) || {THEMES: [], DEFAULT_DARK: "githubDark", DEFAULT_LIGHT: "ayuLight"};
   const find = id => themes.THEMES.find(t => t.id === id);
   const listeners = [];
@@ -19,6 +19,7 @@
     if (typeof raw.privacyOnStart === "boolean") s.privacyOnStart = raw.privacyOnStart;
     if (typeof raw.hints === "boolean") s.hints = raw.hints;
     if (typeof raw.titleAnim === "boolean") s.titleAnim = raw.titleAnim;
+    if (typeof raw.onboardingDismissed === "boolean") s.onboardingDismissed = raw.onboardingDismissed;
     const d = find(raw.darkTheme), l = find(raw.lightTheme);
     if (d && d.dark) s.darkTheme = d.id;
     if (l && !l.dark) s.lightTheme = l.id;

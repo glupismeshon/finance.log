@@ -6,13 +6,13 @@ export async function sessionUser(env, token) {
   if (!token) return null;
   const idHash = await hashSession(token);
   const row = await env.DB.prepare(
-    "SELECT s.id_hash, s.user_id, s.last_seen, u.name, u.avatar, u.handle FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id_hash = ? AND s.expires_at > ?"
+    "SELECT s.id_hash, s.user_id, s.last_seen, u.name, u.avatar, u.handle, u.handle_confirmed FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id_hash = ? AND s.expires_at > ?"
   ).bind(idHash, now()).first();
   if (!row) return null;
   if (now() - row.last_seen >= 3600) {
     await env.DB.prepare("UPDATE sessions SET last_seen = ? WHERE id_hash = ?").bind(now(), idHash).run();
   }
-  return {idHash, userId: row.user_id, name: row.name, avatar: row.avatar, handle: row.handle};
+  return {idHash, userId: row.user_id, name: row.name, avatar: row.avatar, handle: row.handle, handleConfirmed: !!row.handle_confirmed};
 }
 
 export async function createSession(env, userId, token, userAgent) {
@@ -85,9 +85,16 @@ export async function ensureHandle(env, userId) {
 // 'ok' | 'taken'
 export async function setHandle(env, userId, handle) {
   try {
-    await env.DB.prepare("UPDATE users SET handle = ? WHERE id = ?").bind(handle, userId).run();
+    await env.DB.prepare("UPDATE users SET handle = ?, handle_confirmed = 1 WHERE id = ?").bind(handle, userId).run();
     return "ok";
   } catch (e) { if (isUnique(e)) return "taken"; throw e; }
+}
+
+export const confirmHandle = (env, userId) => env.DB.prepare("UPDATE users SET handle_confirmed = 1 WHERE id = ?").bind(userId).run();
+
+// Занят ли ник другим пользователем (не userId).
+export async function handleTakenByOther(env, handle, userId) {
+  return !!(await env.DB.prepare("SELECT 1 AS x FROM users WHERE handle = ? AND id <> ?").bind(handle, userId).first());
 }
 
 export async function attachIdentity(env, userId, {provider, providerId, email, name, avatar}) {
