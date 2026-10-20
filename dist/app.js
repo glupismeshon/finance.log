@@ -1,6 +1,6 @@
 "use strict";
 (() => {
-  const {money: M, schema, journal, views, accounts: acct, i18n: I, boot} = globalThis.MoneyCore;
+  const {money: M, schema, journal, views, accounts: acct, categories: cats, suggest, i18n: I, boot} = globalThis.MoneyCore;
   const t = I.t, tp = I.tp;
   const newId = () => {
     if (crypto.randomUUID) return crypto.randomUUID();
@@ -12,6 +12,7 @@
   const $ = id => document.getElementById(id);
   let state = schema.empty(todayISO()), mode = "expense", filter = "all", trash = false, editing = null, pendingImport = null, locked = false;
   let undoId = null, tab = "journal", currentAccount = null, showArchived = false, accountEditing = null, reconAccount = null, activeSheet = null;
+  let selCat = null, catTouched = false, accTouched = false, catFilter = "all", catKind = "expense", showCatArchived = false, categoryEditing = null;
   let settings = boot.get();
   I.setLang(I.resolve(settings.lang));
   const mobileQuery = window.matchMedia("(max-width: 599px)");
@@ -26,6 +27,10 @@
   const accLabel = a => a.archived ? t("acc.withArchive", {name: I.stored(a.name)}) : I.stored(a.name);
   const firstActive = () => (acct.activeAccounts(state)[0] || state.accounts[0]).id;
   const amountOf = op => Math.abs(op.legs[0].amountCents);
+  const catById = id => state.categories.find(c => c.id === id);
+  const catName = c => c.name || t("cat." + c.key);
+  const catPath = c => { const p = c.parentId && catById(c.parentId); return p ? `${catName(p)}/${catName(c)}` : catName(c); };
+  const opCat = op => { const id = op.allocations[0] && op.allocations[0].categoryId; return id ? catById(id) : null; };
   const money = cents => I.fmtMoney(cents);
   const signed = cents => (cents > 0 ? "+" : "") + money(cents);
   const amountInput = cents => { const v = (cents / 100).toFixed(2); return I.getLang() === "ru" ? v.replace(".", ",") : v; };
@@ -117,10 +122,76 @@
     $("save-button").firstElementChild.textContent = isMobile() ? t("form.submitShort") : editing ? t("form.saveChanges") : t(`form.submit.${type}`);
     $("form-title").textContent = editing ? t(isMobile() ? "form.editShort" : "form.edit") : isMobile() ? t(`form.mobile.${type}`) : t("form.new");
     $("note").placeholder = t(`form.notePh.${type}`);
+    const plain = type !== "transfer";
+    $("merchant-field").hidden = !plain; $("category-field").hidden = !plain;
+    if (plain) {
+      $("merchant-label").textContent = t(`form.merchant.${type}`);
+      $("merchant").placeholder = t(`form.merchantPh.${type}`);
+    }
+    const sc = selCat && catById(selCat);
+    if (!plain || (sc && sc.kind !== type)) selCat = null;
+    renderFormSuggest();
+  }
+  // ---------- подсказки в форме: где / категория ----------
+  function renderFormSuggest() {
+    const type = mode;
+    if (type === "transfer") { $("amount-hint").hidden = true; return; }
+    // чипы магазинов
+    const text = $("merchant").value, key = suggest.merchantKey(text);
+    const names = suggest.merchants(state, type, text, 6).filter(n => suggest.merchantKey(n) !== key);
+    $("merchant-chips").replaceChildren(...names.map(n => chip(n, false, () => { $("merchant").value = n; applyMerchantHint(true); renderFormSuggest(); })));
+    // чипы категорий
+    const ids = suggest.recentCategories(state, type, 6, today()).filter(id => { const c = catById(id); return c && c.kind === type; });
+    if (selCat && !ids.includes(selCat)) ids.unshift(selCat);
+    $("category-chips").replaceChildren(...ids.map(id => chip(catPath(catById(id)), id === selCat, () => { selCat = selCat === id ? null : id; catTouched = true; renderFormSuggest(); })));
+    if (!$("category-tree").hidden) renderCategoryTree();
+    // подсказка суммы
+    const hint = text.trim() ? suggest.forMerchant(state, type, text) : null;
+    $("amount-hint").hidden = !hint;
+    if (hint) $("amount-hint").textContent = t("form.lastAmount", {sum: money(hint.lastAmountCents)});
+  }
+  function chip(text, selected, onClick) {
+    const b = node("button", `chip${selected ? " selected" : ""}`, text); b.type = "button";
+    b.setAttribute("aria-pressed", String(selected));
+    b.addEventListener("click", onClick);
+    return b;
+  }
+  function renderCategoryTree() {
+    const box = $("category-tree"), rows = [];
+    const item = (c, child) => {
+      const b = node("button", `tree-item${child ? " child" : ""}${c.id === selCat ? " selected" : ""}`, (child ? "└ " : "") + catName(c)); b.type = "button";
+      b.addEventListener("click", () => { selCat = c.id; catTouched = true; toggleCategoryTree(false); renderFormSuggest(); });
+      return b;
+    };
+    const none = node("button", `tree-item${selCat === null ? " selected" : ""}`, t("form.categoryNone")); none.type = "button";
+    none.addEventListener("click", () => { selCat = null; catTouched = true; toggleCategoryTree(false); renderFormSuggest(); });
+    rows.push(none);
+    for (const {cat, children} of cats.tree(state, mode)) { rows.push(item(cat, false)); children.forEach(k => rows.push(item(k, true))); }
+    const cur = selCat && catById(selCat);
+    if (cur && cur.archived) rows.push(item(cur, !!cur.parentId));
+    box.replaceChildren(...rows);
+  }
+  function toggleCategoryTree(open) {
+    $("category-tree").hidden = !open;
+    $("category-all").setAttribute("aria-expanded", String(open));
+    if (open) renderCategoryTree();
+  }
+  // подставить категорию и счёт по магазину (если пользователь их ещё не трогал)
+  function applyMerchantHint(force) {
+    const type = mode, text = $("merchant").value;
+    const h = text.trim() ? suggest.forMerchant(state, type, text) : null;
+    if (!h) return;
+    if (!catTouched) {
+      const c = h.categoryId && catById(h.categoryId);
+      if (c && c.kind === type) selCat = c.id;
+    }
+    if (!accTouched && acct.activeAccounts(state).some(a => a.id === h.accountId)) $("account").value = h.accountId;
   }
   function resetForm(focus = false) {
     editing = null;
     $("entry-form").reset();
+    selCat = null; catTouched = false; accTouched = false;
+    toggleCategoryTree(false);
     $("date").value = today();
     $("date").max = today();
     $("form-error").textContent = "";
@@ -137,6 +208,10 @@
     $("date").value = entry.date;
     $("note").value = entry.note;
     $("fee").value = "";
+    $("merchant").value = entry.merchant || "";
+    const ec = opCat(entry);
+    selCat = ec ? ec.id : null; catTouched = true; accTouched = true;
+    toggleCategoryTree(false);
     $("cancel-edit").hidden = false;
     $("delete-entry").hidden = false;
     $("form-error").textContent = "";
@@ -190,17 +265,22 @@
     if (isMobile()) return "all";
     return $("account-filter").value;
   }
+  function catMatch(entry) {
+    if (catFilter === "all") return true;
+    const c = opCat(entry);
+    return !!c && (c.id === catFilter || c.parentId === catFilter);
+  }
   function renderEntries() {
     const query = $("search").value.trim().toLocaleLowerCase(I.locale());
     const accFilter = effectiveAccount(), onAcc = accFilter !== "all";
-    const entries = state.operations.filter(e => e.deleted === trash && (filter === "all" || e.type === filter) && (!onAcc || e.legs.some(l => l.accountId === accFilter)) &&
-      (!query || `${I.stored(e.note)} ${amountInput(amountOf(e))} ${e.legs.map(l => accName(l.accountId)).join(" ")}`.toLocaleLowerCase(I.locale()).includes(query)))
+    const entries = state.operations.filter(e => e.deleted === trash && (filter === "all" || e.type === filter) && (!onAcc || e.legs.some(l => l.accountId === accFilter)) && catMatch(e) &&
+      (!query || `${I.stored(e.note)} ${e.merchant || ""} ${opCat(e) ? catPath(opCat(e)) : ""} ${amountInput(amountOf(e))} ${e.legs.map(l => accName(l.accountId)).join(" ")}`.toLocaleLowerCase(I.locale()).includes(query)))
       .sort((a,b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
     $("entry-count").textContent = tp("journal.count", entries.length);
     const container = $("entries"); container.replaceChildren();
     if (!entries.length) {
       const empty = node("div","empty-state");
-      const filtered = query || filter !== "all";
+      const filtered = query || filter !== "all" || catFilter !== "all";
       const line = (tag, cls, text) => { const p = node("div"); p.append(node("span",`tag ${cls}`,tag),document.createTextNode(text)); return p; };
       empty.append(node("div","prompt","money.log"));
       if (filtered) {
@@ -227,14 +307,24 @@
       const route = entry.type === "transfer" ? `${accName(opFrom(entry))} → ${accName(opTo(entry))}` : "";
       const label = t(`type.${entry.type}`), noteText = I.stored(entry.note);
       const accText = entry.type === "transfer" ? (noteText ? route : "") : accName(entry.legs[0].accountId);
+      const cat = opCat(entry), merchantText = entry.merchant || "";
+      const title = entry.type === "transfer" ? noteText || route : merchantText || noteText || (cat ? catPath(cat) : label);
       const sign = entry.legs[0].amountCents > 0 ? "+" : "−";
       row.append(node("span",`mark ${entry.type}`,{income: "[+]", expense: "[-]", transfer: "[⇄]", adjustment: "[~]"}[entry.type]));
-      row.append(node("span","ttitle",entry.type === "transfer" ? noteText || route : noteText || label));
+      row.append(node("span","ttitle",title));
       const viewLeg = onAcc && entry.type === "transfer" ? entry.legs.find(l => l.accountId === accFilter) : null;
       const transferText = viewLeg ? `${viewLeg.amountCents > 0 ? "+" : "−"}${money(amountOf(entry))}` : money(amountOf(entry));
       row.append(node("span",`tamount ${entry.type}`,entry.type === "transfer" ? transferText : `${sign}${money(amountOf(entry))}`));
+      if (merchantText && noteText) row.append(node("div","tnote",noteText));
       const meta = node("div","tmeta");
-      meta.append(node("span","tmeta-text",[label,accText,trash ? t("row.deleted") : ""].filter(Boolean).join(" · ")));
+      const metaText = node("span","tmeta-text");
+      if (cat) {
+        const link = node("button","bracket cat-link",catPath(cat)); link.type = "button";
+        link.setAttribute("aria-label",t("filter.catTap",{name: catPath(cat)}));
+        link.addEventListener("click",ev=>{ ev.stopPropagation(); setCatFilter(cat.id); });
+        metaText.append(link,document.createTextNode([accText,trash ? t("row.deleted") : ""].filter(Boolean).map(x=>" · "+x).join("")));
+      } else metaText.textContent = [label,accText,trash ? t("row.deleted") : ""].filter(Boolean).join(" · ");
+      meta.append(metaText);
       const actions = node("span","row-actions");
       if (trash) {
         const restore = node("button","bracket",t("row.restore"));
@@ -257,6 +347,31 @@
       }
       meta.append(actions); row.append(meta); container.append(row);
     }
+  }
+  function setCatFilter(value) {
+    catFilter = value;
+    $("category-filter").value = value;
+    renderEntries();
+    renderCatBar();
+  }
+  function renderCatBar() {
+    const c = catFilter !== "all" && catById(catFilter);
+    if (catFilter !== "all" && !c) catFilter = "all";
+    $("cat-bar").hidden = !c;
+    if (c) $("cat-bar-text").textContent = t("filter.catBar",{name: catPath(c)});
+  }
+  function fillCategoryFilter() {
+    const select = $("category-filter");
+    const opts = [["all",t("filter.catAll")]];
+    for (const kind of ["expense","income"]) for (const {cat, children} of cats.tree(state,kind)) {
+      opts.push([cat.id,catName(cat)]);
+      children.forEach(k => opts.push([k.id,"\u00A0\u00A0└ "+catName(k)]));
+    }
+    const cur = catFilter !== "all" && catById(catFilter);
+    if (cur && !opts.some(o => o[0] === cur.id)) opts.push([cur.id,catPath(cur)]);
+    select.replaceChildren(...opts.map(([v,label]) => { const o = document.createElement("option"); o.value = v; o.textContent = label; return o; }));
+    select.value = opts.some(o => o[0] === catFilter) ? catFilter : "all";
+    renderCatBar();
   }
   function bigMoney(el, cents) {
     const p = I.moneyParts(cents);
@@ -312,11 +427,12 @@
     setNav($("journal-nav"), tab === "journal" && !trash);
     setNav($("trash-nav"), tab === "journal" && trash);
     setNav($("settings-nav"), tab === "settings");
+    setNav($("categories-nav"), tab === "categories");
     setNav($("accounts-nav"), tab === "accounts" && !currentAccount);
     document.querySelectorAll("#nav-accounts .qv").forEach(el => setNav(el, tab === "accounts" && el.dataset.id === currentAccount));
     $("journal-title").textContent = t(trash ? "nav.trash" : "nav.journal");
-    $("page-label").textContent = trash ? t("nav.trash") : tab === "accounts" ? (currentAccount ? accName(currentAccount) : t("page.accounts")) : t({journal: "nav.journal", plans: "page.plans", more: "page.more", settings: "nav.settings"}[tab]);
-    const active = trash || tab === "settings" ? "more" : tab;
+    $("page-label").textContent = trash ? t("nav.trash") : tab === "accounts" ? (currentAccount ? accName(currentAccount) : t("page.accounts")) : t({journal: "nav.journal", plans: "page.plans", more: "page.more", settings: "nav.settings", categories: "nav.categories"}[tab]);
+    const active = trash || tab === "settings" || tab === "categories" ? "more" : tab;
     document.querySelectorAll(".tab").forEach(b=>{
       const on = b.dataset.tab === active;
       b.classList.toggle("active",on);
@@ -332,7 +448,9 @@
     $("trash-count").textContent = state.operations.filter(e=>e.deleted).length;
     $("more-trash-count").textContent = $("trash-count").textContent;
     fillAccountFilter();
+    fillCategoryFilter();
     renderAccounts();
+    renderCategories();
     setMode(mode, "keep");
     syncChrome();
     renderEntries();
@@ -346,6 +464,103 @@
   const setTab = name => showScreen(name);
   const openTrash = () => showScreen("journal", null, true);
   const openAccount = id => showScreen("accounts", id);
+
+  // ---------- экран категорий ----------
+  function monthRange() {
+    const ym = today().slice(0, 7);
+    return {from: `${ym}-01`, to: `${ym}-31`};
+  }
+  function monthLabel() {
+    const text = new Intl.DateTimeFormat(I.locale(), {month: "long", year: "numeric"}).format(new Date(today() + "T12:00:00"));
+    return I18nLower(text);
+  }
+  const I18nLower = text => I.getLang() === "en" ? text.toLowerCase() : text;
+  function catRow(c, child, cents, archived) {
+    const row = node("button", `acc-row cat-row${child ? " child" : ""}${archived ? " archived" : ""}`); row.type = "button"; row.dataset.id = c.id;
+    row.append(node("span", "acc-mark", child ? "└" : "[▪]"), node("span", "acc-name", catName(c)), node("span", "acc-bal", cents === null ? "" : money(cents)));
+    row.addEventListener("click", () => openCategoryForm(c.id));
+    return row;
+  }
+  function renderCategories() {
+    document.querySelectorAll("[data-cat-kind]").forEach(b => { const on = b.dataset.catKind === catKind; b.classList.toggle("active", on); b.setAttribute("aria-pressed", String(on)); });
+    const sums = new Map(views.spending(state, {...monthRange(), type: catKind, by: "category"}).map(r => [r.id, r.cents]));
+    const rows = [];
+    for (const {cat, children} of cats.tree(state, catKind)) {
+      const own = sums.get(cat.id) || 0, kids = children.reduce((n, k) => n + (sums.get(k.id) || 0), 0);
+      rows.push(catRow(cat, false, own + kids));
+      children.forEach(k => rows.push(catRow(k, true, sums.get(k.id) || 0)));
+    }
+    if (sums.get(null)) {
+      const row = node("div", "acc-row cat-row archived");
+      row.append(node("span", "acc-mark", "[ ]"), node("span", "acc-name", t("cat.none")), node("span", "acc-bal", money(sums.get(null))));
+      rows.push(row);
+    }
+    $("cat-list").replaceChildren(...rows);
+    let total = 0; for (const v of sums.values()) total += v;
+    $("cat-total").textContent = t("cat.total", {month: monthLabel()}) + " " + money(total);
+    const archived = state.categories.filter(c => c.kind === catKind && c.archived);
+    $("cat-archived-line").hidden = !archived.length;
+    $("cat-archived-count").textContent = archived.length;
+    $("cat-archived-toggle").textContent = t(showCatArchived ? "cat.hide" : "cat.show");
+    $("cat-archived-toggle").setAttribute("aria-expanded", String(showCatArchived));
+    $("cat-archived-list").hidden = !archived.length || !showCatArchived;
+    $("cat-archived-list").replaceChildren(...archived.map(c => catRow(c, false, null, true)));
+  }
+  function openCategoryForm(id) {
+    categoryEditing = id;
+    const c = id && catById(id);
+    const hasKids = !!c && state.categories.some(k => k.parentId === c.id);
+    $("category-title").textContent = t(c ? "cat.edit" : "cat.new");
+    $("category-name").value = c ? catName(c) : "";
+    const roots = state.categories.filter(x => x.kind === (c ? c.kind : catKind) && x.parentId === null && (!c || x.id !== c.id) && (!x.archived || (c && c.parentId === x.id)));
+    const opts = [[ "", t("cat.parentNone")], ...roots.map(x => [x.id, catName(x)])];
+    $("category-parent").replaceChildren(...opts.map(([v, label]) => { const o = document.createElement("option"); o.value = v; o.textContent = label; return o; }));
+    $("category-parent").value = c && c.parentId ? c.parentId : "";
+    $("category-parent").disabled = hasKids;
+    $("category-error").textContent = "";
+    $("category-archive").hidden = !c;
+    if (c) $("category-archive").textContent = t(c.archived ? "cat.unarchive" : "cat.archive");
+    openSheet($("category-box"));
+    $("category-name").focus();
+  }
+  $("category-form").addEventListener("submit", event => {
+    event.preventDefault(); $("category-error").textContent = "";
+    try {
+      const name = $("category-name").value, parentId = $("category-parent").value || null;
+      if (categoryEditing) {
+        const c = catById(categoryEditing), patch = {parentId};
+        if (name.trim() !== catName(c)) patch.name = name;
+        commit(cats.updateCategory(state, categoryEditing, patch));
+      } else commit(cats.addCategory(state, {id: newId(), name, parentId, kind: catKind}));
+      closeSheet(); toast(t(categoryEditing ? "msg.catSaved" : "msg.catAdded"));
+    } catch (e) { $("category-error").textContent = I.err(e); }
+  });
+  $("category-archive").addEventListener("click", () => {
+    const c = catById(categoryEditing); if (!c) return;
+    try {
+      let next = state;
+      if (c.archived) {
+        if (c.parentId && catById(c.parentId).archived) next = cats.archiveCategory(next, c.parentId, false);
+        next = cats.archiveCategory(next, c.id, false);
+      } else {
+        next = cats.archiveCategory(next, c.id, true);
+        for (const k of state.categories.filter(x => x.parentId === c.id)) next = cats.archiveCategory(next, k.id, true);
+      }
+      commit(next); closeSheet(); toast(t(c.archived ? "msg.catUnarchived" : "msg.catArchived"));
+    } catch (e) { $("category-error").textContent = I.err(e); }
+  });
+  $("category-close").addEventListener("click", closeSheet);
+  $("cat-add").addEventListener("click", () => openCategoryForm(null));
+  $("cat-archived-toggle").addEventListener("click", () => { showCatArchived = !showCatArchived; renderCategories(); });
+  document.querySelectorAll("[data-cat-kind]").forEach(b => b.addEventListener("click", () => { catKind = b.dataset.catKind; renderCategories(); }));
+  $("categories-nav").addEventListener("click", () => setTab("categories"));
+  $("more-categories").addEventListener("click", () => setTab("categories"));
+  $("categories-back").addEventListener("click", () => setTab("more"));
+  $("category-filter").addEventListener("change", () => setCatFilter($("category-filter").value));
+  $("cat-bar-clear").addEventListener("click", () => setCatFilter("all"));
+  $("merchant").addEventListener("input", () => { applyMerchantHint(false); renderFormSuggest(); });
+  $("category-all").addEventListener("click", () => toggleCategoryTree($("category-tree").hidden));
+  $("account").addEventListener("change", () => { accTouched = true; });
 
   // ---------- счета: форма и сверка ----------
   function openAccountForm(id) {
@@ -463,7 +678,9 @@
       } else {
         const entry = {...previous,id:previous?.id || newId(),type:mode,date,note,createdAt:previous?.createdAt || now,deleted:false,
           legs:[{accountId,amountCents:mode === "income" ? amountCents : -amountCents}],
-          allocations:mode === "income" ? [] : [{categoryId:null,amountCents}]};
+          allocations:mode === "income" ? (selCat ? [{categoryId:selCat,amountCents}] : []) : [{categoryId:selCat,amountCents}]};
+        const merchant = $("merchant").value.trim();
+        if (merchant) entry.merchant = merchant; else delete entry.merchant;
         next = journal.upsertOperation(state,entry,now);
         done = t(previous ? "msg.changesSaved" : mode === "income" ? "msg.incomeDone" : "msg.expenseDone");
       }

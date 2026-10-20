@@ -220,7 +220,7 @@ strong.income { color: var(--accent); }
 #account-field[hidden], #to-field[hidden], #fee-field[hidden], #transfer-switch[hidden], #add-transfer[hidden] { display: none; }
 
 /* ---------- Экран настроек ---------- */
-.acc-back.settings-back { display: none; }
+.acc-back.settings-back, #categories-back { display: none; }
 .set-list-title { margin: 14px 0 4px; }
 .theme-list { display: grid; gap: 1px; }
 .theme-row {
@@ -235,11 +235,39 @@ strong.income { color: var(--accent); }
 .sw { width: 12px; height: 12px; border: 1px solid var(--border); border-radius: 2px; display: inline-block; }
 .theme-name { min-width: 0; }
 
+/* ---------- Чипы, категории ---------- */
+.amount-hint { margin-top: 4px; }
+.amount-hint[hidden], #merchant-field[hidden], #category-field[hidden], .cat-bar[hidden], .cat-tree[hidden], .chips:empty { display: none; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.chip {
+  max-width: 100%; padding: 4px 10px; border: 1px solid var(--border); border-radius: 14px;
+  background: none; color: var(--text); font-size: 12.5px; text-align: left;
+}
+.chip:hover { border-color: var(--accent-dim); }
+.chip.selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); }
+.chip-all { display: block; margin-top: 8px; }
+.cat-tree { margin-top: 8px; max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; padding: 4px; }
+.tree-item { display: block; width: 100%; padding: 4px 8px; border: 0; border-radius: 4px; background: none; color: var(--text); text-align: left; font-size: 13px; font-weight: 700; }
+.tree-item.child { padding-left: 22px; font-weight: 400; }
+.tree-item:hover { background: var(--panel); }
+.tree-item.selected { color: var(--accent); }
+.tnote { grid-column: 2 / -1; margin-left: 4px; color: var(--muted); font-size: 12.5px; }
+.tnote::before { content: "// "; }
+.cat-link { text-decoration: underline dotted; text-underline-offset: 3px; }
+.cat-bar { margin: 4px 0 6px; }
+.cat-row.child { padding-left: 14px; }
+.cat-row.child .acc-name { color: var(--text); }
+.cat-list { margin-top: 14px; }
+.sheet-archive { display: block; width: 100%; margin-top: 12px; text-align: center; }
+.sheet-archive[hidden] { display: none; }
+.cat-row .acc-name { overflow: hidden; text-overflow: ellipsis; }
+
 /* ---------- Экран счетов (десктоп и мобильный) ---------- */
-body[data-tab="accounts"] #journal-box, body[data-tab="settings"] #journal-box { display: none; }
+body[data-tab="accounts"] #journal-box, body[data-tab="settings"] #journal-box, body[data-tab="categories"] #journal-box { display: none; }
 body[data-tab="accounts"][data-account] #journal-box { display: block; }
 body[data-tab="accounts"] #screen-accounts { display: block; }
 body[data-tab="settings"] #screen-settings { display: grid; gap: 28px; }
+body[data-tab="categories"] #screen-categories { display: block; }
 body[data-tab="accounts"][data-account] #screen-accounts { display: none; }
 body[data-tab="accounts"][data-account] #screen-account { display: block; }
 .acc-list { display: grid; gap: 2px; }
@@ -353,11 +381,19 @@ dialog .btn { width: 100%; margin-top: 16px; }
   .acc-row { min-height: 48px; align-items: center; padding: 6px 6px 6px 0; }
   .acc-actions .bracket, .acc-back, .sign-btn, #archived-toggle, .nsec .bracket { min-height: 44px; padding: 0 2px; }
   .acc-back { display: inline-flex; align-items: center; margin-bottom: 4px; }
+  #categories-back { display: inline-flex; justify-self: start; }
   .acc-back.settings-back { display: inline-flex; justify-self: start; margin-bottom: 0; }
   body[data-tab="settings"] #screen-settings { gap: 20px; }
   .theme-row { min-height: 44px; }
   .acc-add { width: 100%; height: 52px; }
   .account-filter { display: none; }
+  .chip { min-height: 44px; padding: 0 14px; border-radius: 22px; font-size: 14px; }
+  .chip-all, .cat-bar .bracket { min-height: 44px; padding: 0 2px; }
+  .tree-item { min-height: 44px; font-size: 14px; }
+  .cat-link { padding: 12px 2px; margin: -12px 0; }
+  .sheet-archive { min-height: 44px; }
+  .cat-tree { max-height: 40dvh; }
+  body[data-tab="categories"] #screen-categories .filters { margin-bottom: 4px; }
   body[data-tab="more"] #screen-more { display: grid; gap: 20px; }
   .more-list { display: grid; gap: 4px; }
   .more-btn { min-height: 44px; text-align: left; font-size: 13px; color: var(--text); }
