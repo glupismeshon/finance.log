@@ -1508,13 +1508,19 @@
     try { await authFetch(path, {method}); } catch {}
     return loadAccount();
   }
+  // аватар: картинка Google/Telegram может не грузиться — тогда квадрат с первой буквой имени (--accent на --panel)
   function avatarEl(name, url) {
-    const letter = node("span", "auth-avatar auth-avatar-letter", ([...String(name || "")][0] || "?").toUpperCase());
+    const letter = node("span", "auth-avatar auth-avatar-letter", ([...String(name || "").trim()][0] || "?").toUpperCase());
     letter.setAttribute("aria-hidden", "true");
-    if (!url) return letter;
-    const img = node("img", "auth-avatar"); img.src = url; img.alt = t("auth.avatarAlt");
+    if (!/^https?:\/\//i.test(String(url || ""))) return letter;
+    const img = node("img", "auth-avatar"); img.alt = t("auth.avatarAlt");
+    img.setAttribute("referrerpolicy", "no-referrer");
     img.referrerPolicy = "no-referrer";
-    img.addEventListener("error", () => img.replaceWith(letter));
+    img.decoding = "async";
+    const fail = () => { if (img.isConnected || img.parentNode) img.replaceWith(letter); };
+    img.addEventListener("error", fail);
+    img.addEventListener("load", () => { if (!img.naturalWidth) fail(); });
+    img.src = url;
     return img;
   }
   function ago(iso) {
@@ -1988,9 +1994,9 @@
   window.addEventListener("resize", () => { if (tab !== "analytics") return; clearTimeout(anResize); anResize = setTimeout(() => renderAnMonths(anRange()), 120); });
 
   // ---------- вкладка «планы» ----------
-  const SCH = globalThis.MoneyCore.schedules, FC = globalThis.MoneyCore.forecast;
+  const SCH = globalThis.MoneyCore.schedules, FC = globalThis.MoneyCore.forecast, MET = globalThis.MoneyCore.meters;
   const FC_DAYS = 60, SOON_DAYS = 14, DONE_DAYS = 14;
-  let planEditing = null, planType = "expense", planCat = null, planFreq = "monthly", planSub = false, planEnd = false, planPreset = null;
+  let planEditing = null, planType = "expense", planCat = null, planFreq = "monthly", planKind = "fixed", planAmode = "fixed", planMeters = [], planEnd = false, planPreset = null;
   let showPlanArchived = false, plSel = null, plFc = null;
   const daysBetween = (a, b) => Math.round((utcDate(a) - utcDate(b)) / 864e5);
   const wdName = n => lowerEn(dtf({weekday: "short"}, addDays("2024-01-01", n - 1))).replace(/\./g, "");
@@ -2010,28 +2016,53 @@
     return n === 1 ? t("plans.r.day1") : t("plans.r.days", {n});
   }
   const schedById = id => state.schedules.find(s => s.id === id);
+  const kindOf = sc => sc.template || (sc.type === "income" ? "income" : sc.subscription ? "subscription" : "fixed");
+  const isVar = sc => sc.amountMode === "variable";
+  // сумма правила для списков: у variable — оценка со знаком «~» или «нет оценки»
+  function schAmount(sc) {
+    if (!isVar(sc)) return `${planSign(sc.type)}${money(sc.amountCents)}`;
+    const e = SCH.estimate(state, sc.id);
+    return e > 0 ? `~${money(e)}` : t("plans.noEstimate");
+  }
 
   // ----- плашка на главном экране -----
   function renderPlanBanner() {
     const el = $("plan-banner"), td = today();
-    const due = SCH.occurrences(state, {from: addDays(td, -60), to: td, today: td}).filter(o => o.status === "due" || o.status === "overdue");
-    const todays = due.filter(o => o.status === "due"), late = due.filter(o => o.status === "overdue");
+    // variable (awaiting) висит без 60-дневного окна, поэтому смотрим глубже
+    const due = SCH.occurrences(state, {from: addDays(td, -400), to: td, today: td}).filter(o => o.status === "due" || o.status === "overdue" || o.status === "awaiting");
+    const todays = due.filter(o => o.dueDate === td), late = due.filter(o => o.dueDate !== td);
+    const rems = MET.reminders(state, td);
     const first = todays[0] || late[0];
-    el.hidden = !first;
-    if (!first) return;
-    const sc = schedById(first.scheduleId), isToday = first.status === "due";
-    const moreToday = todays.length - (isToday ? 1 : 0), moreLate = late.length - (isToday ? 0 : 1);
-    const text = node("span", "pb-text");
-    text.append(node("span", "tag warn", "[!]"), document.createTextNode(` ${t(isToday ? "banner.today" : "banner.overdue")}: ${sc.name} ${planSign(sc.type)}${money(sc.amountCents)}`));
-    const ok = node("button", "bracket pb-btn", t("plans.confirm")); ok.type = "button";
-    ok.setAttribute("aria-label", t("plans.confirmAria", {name: sc.name}));
-    ok.addEventListener("click", () => openPlanConfirm(sc, first.dueDate));
-    text.append(document.createTextNode(" "), ok);
-    const more = [moreToday > 0 ? t("banner.moreToday", {n: moreToday}) : "", moreLate > 0 ? t("banner.moreOverdue", {n: moreLate}) : ""].filter(Boolean);
-    if (more.length) text.append(document.createTextNode(" · " + more.join(" · ")));
+    el.hidden = !first && !rems.length;
+    if (el.hidden) return;
+    const main = node("div", "pb-main");
+    if (first) {
+      const sc = schedById(first.scheduleId), isToday = first.dueDate === td, aw = first.status === "awaiting";
+      const moreToday = todays.length - (isToday ? 1 : 0), moreLate = late.length - (isToday ? 0 : 1);
+      const text = node("span", "pb-text");
+      const amt = aw ? (first.noEstimate ? t("plans.noEstimate") : `~${money(first.amountCents)}`) : `${planSign(sc.type)}${money(sc.amountCents)}`;
+      text.append(node("span", "tag warn", "[!]"), document.createTextNode(` ${aw ? t("banner.awaiting") : t(isToday ? "banner.today" : "banner.overdue")}: ${sc.name} ${amt}`));
+      const ok = node("button", "bracket pb-btn", aw ? t("plans.enter") : t("plans.confirm")); ok.type = "button";
+      ok.setAttribute("aria-label", t(aw ? "plans.enterAria" : "plans.confirmAria", {name: sc.name}));
+      ok.addEventListener("click", () => aw ? openBillSheet(sc, first.dueDate) : openPlanConfirm(sc, first.dueDate));
+      text.append(document.createTextNode(" "), ok);
+      const more = [moreToday > 0 ? t("banner.moreToday", {n: moreToday}) : "", moreLate > 0 ? t("banner.moreOverdue", {n: moreLate}) : ""].filter(Boolean);
+      if (more.length) text.append(document.createTextNode(" · " + more.join(" · ")));
+      main.append(text);
+    }
+    for (const r of rems) {
+      const sc = schedById(r.scheduleId);
+      const text = node("span", "pb-text");
+      text.append(node("span", "tag warn", "[!]"), document.createTextNode(" " + t("plans.readingsDue", {day: anDay(r.deadline), name: sc.name}) + " "));
+      const ok = node("button", "bracket pb-btn", t("plans.enter")); ok.type = "button";
+      ok.setAttribute("aria-label", t("plans.readingsAria", {name: sc.name}));
+      ok.addEventListener("click", () => openBillSheet(sc, null));
+      text.append(ok);
+      main.append(text);
+    }
     const go = node("button", "bracket pb-btn", t("banner.plans")); go.type = "button";
     go.addEventListener("click", () => setTab("plans"));
-    el.replaceChildren(text, go);
+    el.replaceChildren(main, go);
   }
 
   // ----- подтверждение платежа через форму записи -----
@@ -2060,15 +2091,16 @@
   function planRow(o, sc) {
     const td = today(), done = o.status === "confirmed";
     const op = done ? state.operations.find(x => x.id === o.opId) : null;
-    const row = node("div", `pl-row ${o.status}`);
-    row.append(node("span", "pl-mark", done ? "[✓]" : o.status === "overdue" ? "[!]" : planMark(sc.type)));
+    const variable = isVar(sc), late = o.status === "overdue" || (o.status === "awaiting" && o.dueDate < td);
+    const row = node("div", `pl-row ${o.status}${late && o.status === "awaiting" ? " overdue" : ""}`);
+    row.append(node("span", "pl-mark", done ? "[✓]" : late ? "[!]" : planMark(sc.type)));
     row.append(node("span", "pl-title", `${anDay(o.dueDate)} · ${sc.name}`));
-    const cents = op ? amountOf(op) : sc.amountCents;
-    row.append(node("span", `pl-amt ${sc.type}`, `${planSign(sc.type)}${money(cents)}`));
+    const cents = op ? amountOf(op) : o.amountCents;
+    row.append(node("span", `pl-amt ${sc.type}`, !done && variable ? (o.noEstimate ? t("plans.noEstimate") : `~${money(cents)}`) : `${planSign(sc.type)}${money(cents)}`));
     const meta = node("div", "pl-meta");
     if (done) {
       let text = t("plans.done." + sc.type);
-      const dev = SCH.deviation(state, o.opId);
+      const dev = variable ? null : SCH.deviation(state, o.opId);
       if (dev) text += " " + t("plans.dev", {sum: signed(dev)});
       meta.append(node("span", "pl-state", text));
       if (op) {
@@ -2079,10 +2111,10 @@
       }
     } else {
       const d = daysBetween(o.dueDate, td);
-      meta.append(node("span", "pl-state", o.status === "overdue" ? t("plans.overdueBy", {n: -d}) : d === 0 ? t("plans.today") : t("plans.inDays", {n: d})));
-      const ok = node("button", "bracket pl-ok", t("plans.confirm")); ok.type = "button";
-      ok.setAttribute("aria-label", t("plans.confirmAria", {name: sc.name}));
-      ok.addEventListener("click", () => openPlanConfirm(sc, o.dueDate));
+      meta.append(node("span", "pl-state", o.status === "awaiting" ? t("plans.awaiting") : o.status === "overdue" ? t("plans.overdueBy", {n: -d}) : d === 0 ? t("plans.today") : t("plans.inDays", {n: d})));
+      const ok = node("button", "bracket pl-ok", variable ? t("plans.enter") : t("plans.confirm")); ok.type = "button";
+      ok.setAttribute("aria-label", t(variable ? "plans.enterAria" : "plans.confirmAria", {name: sc.name}));
+      ok.addEventListener("click", () => variable ? openBillSheet(sc, o.dueDate) : openPlanConfirm(sc, o.dueDate));
       const skip = node("button", "bracket", t("plans.skip")); skip.type = "button";
       skip.setAttribute("aria-label", t("plans.skipAria", {name: sc.name}));
       skip.addEventListener("click", () => {
@@ -2095,11 +2127,23 @@
   }
   // только что подтверждённый давний платёж остаётся в списке (по createdAt записи), чтобы было видно отклонение от плана
   function recentOp(id) { const op = state.operations.find(x => x.id === id); return !!op && !!op.createdAt && Date.parse(op.createdAt) > Date.now() - 3 * 864e5; }
+  function readingsRow(r, sc) {
+    const row = node("div", "pl-row overdue reminder");
+    row.append(node("span", "pl-mark", "[!]"), node("span", "pl-title", t("plans.readingsDue", {day: anDay(r.deadline), name: sc.name})));
+    row.append(node("span", "pl-amt", ""));
+    const meta = node("div", "pl-meta");
+    const ok = node("button", "bracket pl-ok", t("plans.enter")); ok.type = "button";
+    ok.setAttribute("aria-label", t("plans.readingsAria", {name: sc.name}));
+    ok.addEventListener("click", () => openBillSheet(sc, null));
+    meta.append(ok); row.append(meta);
+    return row;
+  }
   function renderPlanSoon() {
     const td = today();
-    const list = SCH.occurrences(state, {from: addDays(td, -60), to: addDays(td, SOON_DAYS), today: td})
+    const list = SCH.occurrences(state, {from: addDays(td, -400), to: addDays(td, SOON_DAYS), today: td})
       .filter(o => o.status !== "skipped" && (o.status !== "confirmed" || o.dueDate >= addDays(td, -DONE_DAYS) || recentOp(o.opId)));
-    const rows = list.map(o => { const sc = schedById(o.scheduleId); return sc ? planRow(o, sc) : null; }).filter(Boolean);
+    const rows = MET.reminders(state, td).map(r => readingsRow(r, schedById(r.scheduleId)));
+    rows.push(...list.map(o => { const sc = schedById(o.scheduleId); return sc ? planRow(o, sc) : null; }).filter(Boolean));
     $("pl-soon").replaceChildren(...(rows.length ? rows : [node("div", "muted pl-line", t("plans.soonEmpty"))]));
   }
   function renderPlanForecast() {
@@ -2114,7 +2158,7 @@
     plFc = fc;
     if (fc.untilIncome && fc.nextIncome) {
       const u = fc.untilIncome;
-      $("pl-fc-line").textContent = t(u.plannedIn > 0 ? "plans.fc.untilIn" : "plans.fc.until", {name: fc.nextIncome.name, day: anDay(u.date), out: money(u.plannedOut), in: money(u.plannedIn), end: money(u.endBalance)});
+      $("pl-fc-line").textContent = t(u.plannedIn > 0 ? "plans.fc.untilIn" : "plans.fc.until", {name: fc.nextIncome.name, day: anDay(u.date), out: money(u.plannedOut), in: money(u.plannedIn), end: (u.estimated ? "~" : "") + money(u.endBalance)});
     } else $("pl-fc-line").textContent = t("plans.fc.noIncome", {sum: money(fc.minBalance), day: anDay(fc.minDate)});
     if (fc.deficitDate) {
       const p = fc.points.find(x => x.date === fc.deficitDate);
@@ -2128,7 +2172,7 @@
     if (!fc || plSel === null || !fc.points[plSel]) { $("pl-fc-tip").textContent = fc ? t("plans.fc.tapHint") : ""; $("pl-fc-tip").classList.toggle("hint", !!fc); return; }
     const p = fc.points[plSel];
     $("pl-fc-tip").classList.remove("hint");
-    $("pl-fc-tip").textContent = t("plans.fc.tip", {day: anDay(p.date), sum: money(p.balance)});
+    $("pl-fc-tip").textContent = t(p.estimated ? "plans.fc.tipEst" : "plans.fc.tip", {day: anDay(p.date), sum: money(p.balance)});
   }
   function renderPlanChart() {
     const fc = plFc, host = $("pl-chart");
@@ -2165,7 +2209,7 @@
     for (let i = 0; i < n; i++) {
       const prev = i === 0 ? start : vals[i - 1];
       if (vals[i] === prev) continue;
-      out += `<circle class="pl-dot ${vals[i] > prev ? "in" : "out"}${vals[i] < 0 ? " neg" : ""}" cx="${f1(x(i))}" cy="${f1(y(vals[i]))}" r="3"/>`;
+      out += `<circle class="pl-dot ${vals[i] > prev ? "in" : "out"}${vals[i] < 0 ? " neg" : ""}${pts[i].estimated ? " est" : ""}" cx="${f1(x(i))}" cy="${f1(y(vals[i]))}" r="3"/>`;
     }
     out += `<line class="ch-base" x1="0" x2="${W}" y1="${top + ph}" y2="${top + ph}"/>`;
     for (const i of [0, 15, 30, 45, 60]) {
@@ -2183,11 +2227,18 @@
     renderPlanChart();
   });
   $("pl-fc-view").addEventListener("click", () => { forecastView = nextBalanceView(forecastView); renderPlanForecast(); });
+  // правило кредита правится на экране кредита (раздел B), «по счёту» открывается экраном с историей
+  function openPlanEntry(sc) {
+    const k = kindOf(sc);
+    if (k === "loan") { toast(t("plans.loanStub")); return; }
+    if (k === "bill") { openBillView(sc.id); return; }
+    openPlanForm(sc.id);
+  }
   function planListRow(sc, extra) {
     const row = node("button", "pl-reg"); row.type = "button";
     row.append(node("span", `mark ${sc.type}`, planMark(sc.type)), node("span", "pl-title", sc.name), node("span", `pl-amt ${sc.type}`, extra.amount));
     row.append(node("span", "pl-meta pl-meta-text", extra.meta));
-    row.addEventListener("click", () => openPlanForm(sc.id));
+    row.addEventListener("click", () => openPlanEntry(sc));
     return row;
   }
   function renderPlanSubs() {
@@ -2210,7 +2261,8 @@
         const parts = [ruleText(sc)];
         if (sc.paused) parts.push(t("plans.paused")); else if (next.get(sc.id)) parts.push(t("plans.next", {day: anDay(next.get(sc.id))}));
         if (sc.subscription) parts.push(t("plans.subTag"));
-        const row = planListRow(sc, {amount: `${planSign(sc.type)}${money(sc.amountCents)}`, meta: parts.join(" · ")});
+        if (kindOf(sc) === "bill" || kindOf(sc) === "loan") parts.push(t("plans.tag." + kindOf(sc)));
+        const row = planListRow(sc, {amount: schAmount(sc), meta: parts.join(" · ")});
         if (sc.paused) row.classList.add("paused");
         rows.push(row);
       }
@@ -2222,7 +2274,7 @@
     $("pl-archived-toggle").textContent = t(showPlanArchived ? "plans.hide" : "plans.show");
     $("pl-archived-toggle").setAttribute("aria-expanded", String(showPlanArchived));
     $("pl-archived").hidden = !arch.length || !showPlanArchived;
-    $("pl-archived").replaceChildren(...arch.map(sc => { const r = planListRow(sc, {amount: `${planSign(sc.type)}${money(sc.amountCents)}`, meta: ruleText(sc)}); r.classList.add("paused"); return r; }));
+    $("pl-archived").replaceChildren(...arch.map(sc => { const r = planListRow(sc, {amount: schAmount(sc), meta: ruleText(sc)}); r.classList.add("paused"); return r; }));
   }
   const recKey = m => m.trim().toLowerCase();
   function renderPlanDetect() {
@@ -2269,14 +2321,20 @@
     $("plan-day").value = keep || "1";
     $("plan-day-label").textContent = t(monthly ? "plans.f.dayMonth" : "plans.f.dayYear");
   }
+  const variableKind = () => planKind === "bill" || (planKind === "income" && planAmode === "variable");
   function syncPlanForm() {
     const type = planType, plain = type !== "transfer";
-    document.querySelectorAll("[data-plan-type]").forEach(b => { const on = b.dataset.planType === type; b.classList.toggle("selected", on); b.setAttribute("aria-pressed", String(on)); });
+    document.querySelectorAll("[data-plan-type]").forEach(b => { const on = b.dataset.planType === type; b.classList.toggle("selected", on); b.setAttribute("aria-pressed", String(on)); b.hidden = b.dataset.planType === "income"; });
+    document.querySelectorAll("[data-plan-amode]").forEach(b => { const on = b.dataset.planAmode === planAmode; b.classList.toggle("selected", on); b.setAttribute("aria-pressed", String(on)); });
     document.querySelectorAll("[data-plan-freq]").forEach(b => { const on = b.dataset.planFreq === planFreq; b.classList.toggle("active", on); b.setAttribute("aria-pressed", String(on)); });
+    $("plan-type-switch").hidden = planKind !== "fixed";
+    $("plan-amode-field").hidden = planKind !== "income";
+    $("plan-bill-field").hidden = planKind !== "bill";
+    $("plan-amount-label").textContent = t(variableKind() ? "plans.f.amountApprox" : "form.amount");
+    $("plan-amount-opt").hidden = !variableKind();
     $("plan-account-label").textContent = t(type === "income" ? "form.to" : "form.from");
     $("plan-to-field").hidden = plain;
     $("plan-category-field").hidden = !plain; $("plan-merchant-field").hidden = !plain;
-    $("plan-sub").hidden = type !== "expense";
     if (plain) {
       $("plan-merchant-label").textContent = t(`form.merchant.${type}`);
       $("plan-merchant").placeholder = t(`form.merchantPh.${type}`);
@@ -2287,10 +2345,57 @@
     $("plan-date-field").hidden = planFreq === "weekly" || planFreq === "days";
     $("plan-date-field").classList.toggle("two", planFreq === "yearly");
     planDayOptions();
-    $("plan-sub").classList.toggle("selected", planSub); $("plan-sub").setAttribute("aria-checked", String(planSub));
     $("plan-end-field").hidden = !planEnd;
     $("plan-end-toggle").textContent = t(planEnd ? "plans.f.endClear" : "plans.f.endSet");
     renderPlanCats();
+    if (planKind === "bill") renderPlanMeters();
+  }
+  // ----- счётчики в форме «по счёту» -----
+  const METER_UNITS = ["kWh", "m3", "gcal", "unit"];
+  function renderPlanMeters() {
+    const vis = planMeters.filter(m => !m.archived);
+    if (!vis.length) { $("plan-meters").replaceChildren(node("div", "muted pl-line", t("plans.f.metersEmpty"))); return; }
+    const field = (cls, label, control) => { const l = node("label", "pm-f " + cls); l.append(node("span", "muted", label), control); return l; };
+    $("plan-meters").replaceChildren(...vis.map(m => {
+      const row = node("div", "pf-meter");
+      const name = node("input"); name.type = "text"; name.maxLength = 60; name.value = m.name; name.placeholder = t("plans.f.meterNamePh"); name.autocomplete = "off";
+      name.addEventListener("input", () => { m.name = name.value; });
+      const unit = node("select");
+      unit.append(...METER_UNITS.map(u => opt(u, t("unit." + u))));
+      unit.value = m.unit;
+      unit.addEventListener("change", () => { m.unit = unit.value; });
+      const tariff = node("input"); tariff.type = "text"; tariff.inputMode = "decimal"; tariff.value = m.tariff; tariff.placeholder = t("amount.ph"); tariff.autocomplete = "off"; tariff.maxLength = 20;
+      tariff.addEventListener("input", () => { m.tariff = tariff.value; });
+      const del = node("button", "bracket pm-x", t("plans.f.meterRemove")); del.type = "button";
+      del.setAttribute("aria-label", t("plans.f.meterRemoveAria", {name: m.name || "—"}));
+      del.addEventListener("click", () => {
+        // у счётчика с показаниями история сохраняется (архив), иначе удаляем совсем
+        if (m.hasReadings) m.archived = true; else planMeters = planMeters.filter(x => x !== m);
+        renderPlanMeters();
+      });
+      row.append(field("pm-name", t("plans.f.meterName"), name), del, field("", t("plans.f.meterUnit"), unit), field("", t("plans.f.meterTariff"), tariff));
+      return row;
+    }));
+  }
+  $("plan-meter-add").addEventListener("click", () => {
+    planMeters.push({id: newId(), name: "", unit: "kWh", tariff: "", archived: false, hasReadings: false});
+    renderPlanMeters();
+    const inputs = $("plan-meters").querySelectorAll(".pm-name input"); inputs[inputs.length - 1].focus();
+  });
+  // ----- выбор вида -----
+  const KIND_MARK = {subscription: "[↻]", fixed: "[=]", bill: "[#]", income: "[+]"};
+  function openPlanKind() {
+    $("plan-kinds").replaceChildren(...["subscription", "fixed", "bill", "income"].map(k => {
+      const b = node("button", "pk-btn"); b.type = "button"; b.dataset.planKind = k;
+      b.setAttribute("aria-label", t("plans.kindAria", {kind: t("plans.kind." + k)}));
+      const text = node("span", "pk-text");
+      text.append(node("span", "pk-name", t("plans.kind." + k)), node("span", "muted pk-ex", t("plans.kind." + k + ".ex")));
+      b.append(node("span", `pk-mark${k === "income" ? " income" : ""}`, KIND_MARK[k]), text);
+      b.addEventListener("click", () => { closeSheet(); openPlanForm(null, {template: k}); });
+      return b;
+    }));
+    openSheet($("plan-kind-box"));
+    $("plan-kinds").firstChild.focus();
   }
   function renderPlanCats() {
     if (planType === "transfer") return;
@@ -2322,12 +2427,20 @@
     const sc = id ? schedById(id) : null, p = sc || preset || {};
     if (id && !sc) return;
     planPreset = sc;
-    planType = p.type || "expense"; planCat = p.categoryId || null; planFreq = p.rule ? p.rule.freq : "monthly";
-    planSub = !!p.subscription; planEnd = !!p.endDate;
+    planKind = sc ? kindOf(sc) : (p.template || (p.subscription ? "subscription" : p.type === "income" ? "income" : "fixed"));
+    planAmode = p.amountMode || (planKind === "bill" ? "variable" : "fixed");
+    planType = planKind === "income" ? "income" : planKind === "fixed" ? (p.type === "transfer" ? "transfer" : "expense") : "expense";
+    planCat = p.categoryId || null; planFreq = p.rule ? p.rule.freq : "monthly";
+    planEnd = !!p.endDate;
+    planMeters = (p.meters || []).map(m => ({id: m.id, name: m.name, unit: m.unit, tariff: m.tariffCents == null ? "" : amountInput(m.tariffCents), tariffCents: m.tariffCents, archived: !!m.archived,
+      hasReadings: (state.readings || []).some(r => !r.deleted && r.meterId === m.id && r.scheduleId === (sc && sc.id))}));
+    $("plan-readings-day").replaceChildren(opt("", t("plans.f.readingsNone")), ...Array.from({length: 31}, (_, i) => opt(String(i + 1), String(i + 1))));
+    $("plan-readings-day").value = p.readingsDay ? String(p.readingsDay) : "";
     const r = p.rule || {}, d = new Date();
-    $("plan-title").textContent = t(sc ? "plans.f.edit" : "plans.f.new");
+    $("plan-title").textContent = `${t(sc ? "plans.f.edit" : "plans.f.new")} · ${t("plans.kind." + planKind)}`;
     $("plan-name").value = p.name || "";
     $("plan-amount").value = p.amountCents ? amountInput(p.amountCents) : "";
+    $("plan-amode-field").hidden = true;
     $("plan-merchant").value = p.merchant || "";
     planAccounts($("plan-account"), p.accountId || (acct.activeAccounts(state)[0] || state.accounts[0]).id);
     planAccounts($("plan-to"), p.toAccountId || (acct.activeAccounts(state).find(a => a.id !== $("plan-account").value) || {}).id);
@@ -2360,15 +2473,14 @@
     planType = b.dataset.planType;
     const c = planCat && catById(planCat);
     if (planType === "transfer" || (c && c.kind !== planType)) planCat = null;
-    if (planType !== "expense") planSub = false;
     syncPlanForm();
   }));
+  document.querySelectorAll("[data-plan-amode]").forEach(b => b.addEventListener("click", () => { planAmode = b.dataset.planAmode; syncPlanForm(); }));
   document.querySelectorAll("[data-plan-freq]").forEach(b => b.addEventListener("click", () => {
     const prev = $("plan-day").value;
     planFreq = b.dataset.planFreq; syncPlanForm(); $("plan-day").value = prev;
   }));
   $("plan-category-all").addEventListener("click", () => togglePlanTree($("plan-category-tree").hidden));
-  $("plan-sub").addEventListener("click", () => { planSub = !planSub; syncPlanForm(); });
   $("plan-end-toggle").addEventListener("click", () => { planEnd = !planEnd; syncPlanForm(); });
   $("plan-account").addEventListener("change", () => {
     if (planType !== "transfer" || $("plan-account").value !== $("plan-to").value) return;
@@ -2383,7 +2495,8 @@
     try {
       const name = $("plan-name").value.trim();
       if (!name) throw new Error(t("err.planName"));
-      const amountCents = M.parseAmount($("plan-amount").value);
+      const variable = variableKind(), rawAmount = $("plan-amount").value.trim();
+      const amountCents = variable && !rawAmount ? 0 : M.parseAmount(rawAmount);
       const accountId = $("plan-account").value;
       if (!accountId) throw new Error(t("err.pickAccount"));
       const transfer = planType === "transfer", toId = $("plan-to").value;
@@ -2404,8 +2517,18 @@
       if (endDate !== null && !M.validDate(endDate)) throw new Error(t("err.date"));
       if (endDate && endDate < startDate) throw new Error(t("err.planEnd"));
       const merchant = $("plan-merchant").value.trim();
-      const data = {type: planType, name, amountCents, accountId, categoryId: transfer ? null : planCat, rule, startDate, endDate, subscription: planType === "expense" && planSub,
-        merchant: transfer || !merchant ? undefined : merchant, toAccountId: transfer ? toId : undefined};
+      const data = {type: planType, template: planKind, amountMode: variable ? "variable" : "fixed", name, amountCents, accountId, categoryId: transfer ? null : planCat, rule, startDate, endDate,
+        subscription: planKind === "subscription", merchant: transfer || !merchant ? undefined : merchant, toAccountId: transfer ? toId : undefined};
+      if (planKind === "bill") {
+        data.meters = planMeters.map(m => {
+          if (!m.archived && !m.name.trim()) throw new Error(t("err.meterName"));
+          const out = {id: m.id, name: m.name.trim() || "—", unit: m.unit, archived: !!m.archived};
+          const raw = m.tariff.trim();
+          if (raw && !m.archived) out.tariffCents = M.parseAmount(raw); else if (m.tariffCents != null) out.tariffCents = m.tariffCents;
+          return out;
+        });
+        data.readingsDay = $("plan-readings-day").value ? +$("plan-readings-day").value : null;
+      }
       if (planEditing) commit(SCH.updateSchedule(state, planEditing, data, nowISO()));
       else commit(SCH.addSchedule(state, {id: newId(), ...data}, nowISO()));
       closeSheet(); toast(t(planEditing ? "msg.planSaved" : "msg.planAdded"));
@@ -2419,8 +2542,180 @@
     const sc = planEditing && schedById(planEditing); if (!sc) return;
     try { commit(SCH.archiveSchedule(state, sc.id, nowISO(), !sc.archived)); closeSheet(); toast(t(sc.archived ? "msg.planUnarchived" : "msg.planArchived")); } catch (e) { $("plan-error").textContent = I.err(e); }
   });
-  $("plan-add").addEventListener("click", () => openPlanForm(null));
+  $("plan-add").addEventListener("click", openPlanKind);
   $("plan-close").addEventListener("click", closeSheet);
+  $("plan-kind-close").addEventListener("click", closeSheet);
+  $("bill-close").addEventListener("click", closeSheet);
+  $("bv-close").addEventListener("click", closeSheet);
+
+  // ----- ввод суммы и показаний (по счёту / доход «примерно») -----
+  let billCtx = null, billRows = [], billTouched = false;
+  const parseMilli = raw => {
+    const c = String(raw).trim().replace(/[\s  ]/g, "").replace(",", ".");
+    if (!/^\d{1,12}(?:\.\d{1,3})?$/.test(c)) throw new Error(t("bill.badReading"));
+    const [a, b = ""] = c.split(".");
+    return Number(a) * 1000 + Number(b.padEnd(3, "0"));
+  };
+  const fmtMilli = v => new Intl.NumberFormat(I.locale(), {maximumFractionDigits: 3}).format(v / 1000);
+  function openBillSheet(sc, dueDate) {
+    billCtx = {scheduleId: sc.id, dueDate}; billTouched = false;
+    const td = today(), meters = (sc.meters || []).filter(m => !m.archived);
+    billRows = meters.map(m => {
+      const hist = MET.consumption(state, sc.id, m.id);
+      return {m, prev: hist.filter(r => r.date < td).pop() || null, cur: hist.find(r => r.date === td) || null};
+    });
+    $("bill-title").textContent = dueDate ? t("bill.title", {name: sc.name, day: anDay(dueDate)}) : t("bill.readingsTitle", {name: sc.name});
+    $("bill-readings-sec").hidden = !meters.length;
+    const pay = !!dueDate;
+    $("bill-amount-label").hidden = !pay; $("bill-amount").parentElement.hidden = !pay; $("bill-pay").hidden = !pay;
+    $("bill-readings-only").hidden = !meters.length;
+    $("bill-readings-only").className = pay ? "btn ghost" : "btn primary";
+    $("bill-amount-label").textContent = t(sc.type === "income" ? "bill.amountIncome" : "bill.amount");
+    const est = isVar(sc) ? SCH.estimate(state, sc.id) : sc.amountCents;
+    $("bill-amount").value = est > 0 ? amountInput(est) : "";
+    $("bill-error").textContent = "";
+    $("bill-meters").replaceChildren(...billRows.map(r => {
+      const box = node("div", "bill-m");
+      const head = node("div", "bm-head");
+      head.append(node("span", "bm-name", r.m.name), node("span", "muted", r.prev ? t("bill.was", {v: `${fmtMilli(r.prev.valueMilli)} ${t("unit." + r.m.unit)}`}) : t("bill.first")));
+      r.input = node("input"); r.input.type = "text"; r.input.inputMode = "decimal"; r.input.autocomplete = "off"; r.input.maxLength = 18;
+      r.input.setAttribute("aria-label", `${r.m.name}, ${t("unit." + r.m.unit)}`);
+      if (r.cur) r.input.value = fmtMilli(r.cur.valueMilli).replace(/[\s  ]/g, "");
+      r.use = node("div", "muted bm-use");
+      r.use.setAttribute("aria-live", "polite");
+      r.input.addEventListener("input", updateBillCalc);
+      const line = node("div", "bm-in"); line.append(node("span", "muted", "→"), r.input, node("span", "muted", t("unit." + r.m.unit)));
+      box.append(head, line, r.use);
+      return box;
+    }));
+    $("bill-amount").oninput = () => { billTouched = true; };
+    updateBillCalc();
+    openSheet($("bill-box"));
+    (billRows.length ? billRows[0].input : $("bill-amount")).focus();
+  }
+  function updateBillCalc() {
+    const sc = schedById(billCtx.scheduleId);
+    let total = 0;
+    for (const r of billRows) {
+      r.use.textContent = ""; r.use.classList.remove("bad");
+      const raw = r.input.value.trim();
+      if (!raw) continue;
+      let v; try { v = parseMilli(raw); } catch { continue; }
+      if (!r.prev) continue;
+      const d = v - r.prev.valueMilli;
+      if (d < 0) { r.use.textContent = I.err("Показание меньше прошлого — проверьте."); r.use.classList.add("bad"); continue; }
+      const cost = MET.costFor(sc, {[r.m.id]: d});
+      total += cost;
+      r.use.textContent = t("bill.use", {d: fmtMilli(d), unit: t("unit." + r.m.unit)}) + (cost > 0 ? " · " + money(cost) : "");
+    }
+    $("bill-cost").textContent = total > 0 ? t("bill.metersCost", {sum: money(total)}) : "";
+    if (!billTouched && billCtx.dueDate) {
+      const est = isVar(sc) ? SCH.estimate(state, sc.id) : sc.amountCents;
+      const v = total > 0 ? total : est;
+      $("bill-amount").value = v > 0 ? amountInput(v) : "";
+    }
+  }
+  function applyBill(pay) {
+    $("bill-error").textContent = "";
+    try {
+      const sc = schedById(billCtx.scheduleId), td = today(), now = nowISO();
+      let next = state, saved = 0;
+      for (const r of billRows) {
+        const raw = r.input.value.trim();
+        if (!raw) continue;
+        const v = parseMilli(raw);
+        next = r.cur ? MET.updateReading(next, r.cur.id, {valueMilli: v}, now)
+          : MET.addReading(next, {id: newId(), scheduleId: sc.id, meterId: r.m.id, date: td, valueMilli: v}, now);
+        saved++;
+      }
+      if (!pay && !saved) throw new Error(t("bill.noReadings"));
+      if (pay) {
+        const cents = M.parseAmount($("bill-amount").value);
+        next = journal.upsertOperation(next, SCH.confirmOp(sc, billCtx.dueDate, {amountCents: cents, date: td, id: newId(), now}), now);
+      }
+      commit(next); closeSheet();
+      toast(t(pay ? (saved ? "msg.billPaidReadings" : "msg.billPaid") : "msg.readingsSaved"));
+    } catch (e) { $("bill-error").textContent = I.err(e); }
+  }
+  $("bill-form").addEventListener("submit", event => { event.preventDefault(); applyBill(!!billCtx.dueDate); });
+  $("bill-readings-only").addEventListener("click", () => applyBill(false));
+
+  // ----- экран правила «по счёту»: история сумм и расход по счётчикам -----
+  let bvId = null;
+  function barChart(items, ariaLabel, fmt) {
+    const wrap = node("div", "bv-bars"), tip = node("div", "muted bv-tip", t("bv.tapHint"));
+    const W = 320, H = 120, top = 14, bot = 18, ph = H - top - bot, slot = W / Math.max(items.length, 1), bw = Math.min(18, slot - 6);
+    const max = Math.max(1, ...items.map(i => i.v));
+    let out = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${ariaLabel.replace(/"/g, "&quot;")}">`;
+    out += `<line class="ch-base" x1="0" x2="${W}" y1="${top + ph}" y2="${top + ph}"/>`;
+    items.forEach((it, i) => {
+      const x = i * slot + (slot - bw) / 2, h = it.v > 0 ? Math.max(2, it.v / max * ph) : 0;
+      out += `<g class="ch-col" tabindex="0" role="button" data-tip="${(it.label + ": " + fmt(it.v)).replace(/"/g, "&quot;")}"><rect class="ch-hit" x="${(i * slot).toFixed(1)}" y="0" width="${slot.toFixed(1)}" height="${H}"/>`
+        + (h ? `<rect class="ch-bar" x="${x.toFixed(1)}" y="${(top + ph - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="2"/>` : "")
+        + `<text class="ch-t" x="${(i * slot + slot / 2).toFixed(1)}" y="${H - 5}" text-anchor="middle">${it.short}</text></g>`;
+    });
+    wrap.innerHTML = out + "</svg>";
+    wrap.append(tip);
+    const pick = g => { if (g) tip.textContent = "-- " + g.dataset.tip; };
+    wrap.addEventListener("click", ev => pick(ev.target.closest(".ch-col")));
+    wrap.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); pick(ev.target.closest(".ch-col")); } });
+    return wrap;
+  }
+  const lastMonths = n => {
+    const d = new Date(), out = [];
+    for (let i = n - 1; i >= 0; i--) { const x = new Date(d.getFullYear(), d.getMonth() - i, 1); out.push(`${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}`); }
+    return out;
+  };
+  const billMonth = ym => `${monthShort(ym + "-01")} ${ym.slice(0, 4)}`;
+  function renderBillView() {
+    const sc = schedById(bvId);
+    if (!sc) return;
+    $("bv-title").textContent = sc.name;
+    const est = SCH.estimate(state, sc.id);
+    $("bv-est").textContent = est > 0 ? t("bv.est", {sum: money(est)}) : `-- ${t("plans.noEstimate")}`;
+    const months = lastMonths(12), sums = new Map(months.map(m => [m, 0]));
+    for (const op of state.operations) {
+      if (op.deleted || !op.links || op.links.scheduleId !== sc.id || !op.links.dueDate) continue;
+      const k = op.links.dueDate.slice(0, 7);
+      if (sums.has(k)) sums.set(k, sums.get(k) + amountOf(op));
+    }
+    const filled = months.filter(m => sums.get(m) > 0);
+    $("bv-avg").textContent = filled.length ? t("bv.avg", {sum: money(Math.round(filled.reduce((a, m) => a + sums.get(m), 0) / filled.length))}) : t("bv.empty");
+    $("bv-sums").replaceChildren(...(filled.length ? [barChart(months.map(m => ({label: billMonth(m), short: monthShort(m + "-01"), v: sums.get(m)})), t("bv.chartAria", {name: sc.name}), money)] : []));
+    const meters = (sc.meters || []).filter(m => !m.archived), host = [];
+    for (const m of meters) {
+      host.push(node("h3", "pl-h", t("bv.consumption", {name: m.name, unit: t("unit." + m.unit)})));
+      const rows = MET.consumption(state, sc.id, m.id).filter(r => r.deltaMilli !== null).slice(-12);
+      if (!rows.length) { host.push(node("div", "muted bv-line", t("bv.noReadings"))); continue; }
+      host.push(barChart(rows.map(r => ({label: anDay(r.date), short: monthShort(r.date), v: r.deltaMilli / 1000})), t("bv.chartAriaR", {name: m.name}), v => `${fmtMilli(v * 1000)} ${t("unit." + m.unit)}`));
+    }
+    $("bv-meters").replaceChildren(...host);
+    $("bv-tariff-sec").hidden = !meters.length;
+    $("bv-error").textContent = "";
+    $("bv-tariffs").replaceChildren(...meters.map(m => {
+      const l = node("label", "pm-f"); l.append(node("span", "muted", `${m.name}, ${t("plans.f.meterTariff")} (${t("unit." + m.unit)})`));
+      const inp = node("input"); inp.type = "text"; inp.inputMode = "decimal"; inp.autocomplete = "off"; inp.maxLength = 20; inp.dataset.meter = m.id; inp.placeholder = t("amount.ph");
+      inp.value = m.tariffCents == null ? "" : amountInput(m.tariffCents);
+      l.append(inp);
+      return l;
+    }));
+  }
+  function openBillView(id) { bvId = id; renderBillView(); openSheet($("bv-box")); }
+  $("bv-tariff-save").addEventListener("click", () => {
+    $("bv-error").textContent = "";
+    try {
+      const sc = schedById(bvId), vals = {};
+      $("bv-tariffs").querySelectorAll("input").forEach(inp => { const raw = inp.value.trim(); vals[inp.dataset.meter] = raw ? M.parseAmount(raw) : null; });
+      const meters = sc.meters.map(m => {
+        if (!(m.id in vals)) return m;
+        const {tariffCents: _t, ...rest} = m;
+        return vals[m.id] === null ? rest : {...rest, tariffCents: vals[m.id]};
+      });
+      commit(SCH.updateSchedule(state, sc.id, {meters}, nowISO()));
+      renderBillView(); toast(t("msg.tariffsSaved"));
+    } catch (e) { $("bv-error").textContent = I.err(e); }
+  });
+  $("bv-edit").addEventListener("click", () => { const id = bvId; closeSheet(); openPlanForm(id); });
 
   function applyLanguage() {
     I.setLang(I.resolve(settings.lang));

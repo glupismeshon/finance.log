@@ -506,12 +506,19 @@
       <form id="plan-form" novalidate>
         <label class="field-label first" for="plan-name" data-i18n="plans.f.name"></label>
         <input id="plan-name" type="text" maxlength="80" autocomplete="off" autocapitalize="sentences" data-i18n-placeholder="plans.f.namePh">
-        <div class="type-switch pf-type" role="group" data-i18n-aria-label="form.typeAria">
+        <div class="type-switch pf-type" id="plan-type-switch" role="group" data-i18n-aria-label="form.typeAria">
           <button type="button" data-plan-type="expense" class="selected" aria-pressed="true" data-i18n="form.typeExpense"></button>
           <button type="button" data-plan-type="income" aria-pressed="false" data-i18n="form.typeIncome"></button>
           <button type="button" data-plan-type="transfer" aria-pressed="false" data-i18n="form.typeTransfer"></button>
         </div>
-        <label class="field-label" for="plan-amount" data-i18n="form.amount"></label>
+        <div id="plan-amode-field" hidden>
+          <div class="field-label" data-i18n="plans.f.amode"></div>
+          <div class="type-switch pf-amode" role="group" data-i18n-aria-label="plans.f.amode">
+            <button type="button" data-plan-amode="fixed" class="selected" aria-pressed="true" data-i18n="plans.f.amodeFixed"></button>
+            <button type="button" data-plan-amode="variable" aria-pressed="false" data-i18n="plans.f.amodeVar"></button>
+          </div>
+        </div>
+        <label class="field-label" for="plan-amount"><span id="plan-amount-label"></span> <span class="muted hint" id="plan-amount-opt" hidden data-i18n="common.optional"></span></label>
         <div class="amount-field"><input id="plan-amount" type="text" inputmode="decimal" data-i18n-placeholder="amount.ph" autocomplete="off" maxlength="20"><span aria-hidden="true">₽</span></div>
         <label class="field-label" for="plan-account" id="plan-account-label"></label>
         <select id="plan-account"></select>
@@ -525,6 +532,12 @@
         <div id="plan-merchant-field">
           <label class="field-label" for="plan-merchant"><span id="plan-merchant-label"></span> <span class="muted hint" data-i18n="common.optional"></span></label>
           <input id="plan-merchant" type="text" maxlength="80" autocomplete="off" autocapitalize="sentences">
+        </div>
+        <div id="plan-bill-field" hidden>
+          <label class="field-label" for="plan-readings-day" data-i18n="plans.f.readingsDay"></label>
+          <select id="plan-readings-day"></select>
+          <div class="field-label"><span data-i18n="plans.f.meters"></span> <button type="button" class="bracket" id="plan-meter-add" data-i18n="plans.f.meterAdd"></button></div>
+          <div class="pf-meters" id="plan-meters"></div>
         </div>
         <div class="field-label" data-i18n="plans.f.freq"></div>
         <div class="filters pf-freq" role="group" data-i18n-aria-label="plans.f.freq">
@@ -543,12 +556,58 @@
         <div class="dp" data-label="plan-start-label"><input id="plan-start" type="hidden"></div>
         <div class="field-label pf-end-head"><span id="plan-end-label" data-i18n="plans.f.end"></span> <span class="muted hint" data-i18n="common.optional"></span> <button type="button" class="bracket" id="plan-end-toggle"></button></div>
         <div id="plan-end-field" hidden><div class="dp" data-label="plan-end-label"><input id="plan-end" type="hidden"></div></div>
-        <button class="theme-row pf-sub" id="plan-sub" type="button" role="checkbox" aria-checked="false"><span class="theme-check" aria-hidden="true">[✓]</span><span class="theme-name" data-i18n="plans.f.sub"></span></button>
         <div id="plan-error" class="form-error" role="alert"></div>
         <button type="submit" class="btn primary" id="plan-save"><span data-i18n="acform.save"></span><span aria-hidden="true">↵</span></button>
         <button type="button" class="bracket sheet-archive" id="plan-pause" hidden></button>
         <button type="button" class="bracket sheet-archive" id="plan-archive" hidden></button>
       </form>
+    </div>
+  </section>
+
+  <section class="box sheet-form" id="plan-kind-box" role="dialog" aria-modal="true" aria-labelledby="plan-kind-title">
+    <h2 class="box-label" id="plan-kind-title" data-i18n="plans.f.new"></h2>
+    <button type="button" class="bracket sheet-x" id="plan-kind-close" data-i18n-aria-label="common.close">[×]</button>
+    <div class="box-body">
+      <div class="muted pk-hint" data-i18n="plans.kind.hint"></div>
+      <div class="pk-list" id="plan-kinds"></div>
+    </div>
+  </section>
+
+  <section class="box sheet-form" id="bill-box" role="dialog" aria-modal="true" aria-labelledby="bill-title">
+    <h2 class="box-label" id="bill-title"></h2>
+    <button type="button" class="bracket sheet-x" id="bill-close" data-i18n-aria-label="common.close">[×]</button>
+    <div class="box-body">
+      <form id="bill-form" novalidate>
+        <div id="bill-readings-sec" hidden>
+          <div class="field-label first" data-i18n="bill.readings"></div>
+          <div class="bill-meters" id="bill-meters"></div>
+          <div class="muted bill-line" id="bill-cost"></div>
+        </div>
+        <label class="field-label" for="bill-amount" id="bill-amount-label"></label>
+        <div class="amount-field"><input id="bill-amount" type="text" inputmode="decimal" data-i18n-placeholder="amount.ph" autocomplete="off" maxlength="20"><span aria-hidden="true">₽</span></div>
+        <div id="bill-error" class="form-error" role="alert"></div>
+        <button type="submit" class="btn primary" id="bill-pay"><span data-i18n="bill.pay"></span><span aria-hidden="true">↵</span></button>
+        <button type="button" class="btn ghost" id="bill-readings-only" data-i18n="bill.readingsOnly"></button>
+      </form>
+    </div>
+  </section>
+
+  <section class="box sheet-form" id="bv-box" role="dialog" aria-modal="true" aria-labelledby="bv-title">
+    <h2 class="box-label" id="bv-title"></h2>
+    <button type="button" class="bracket sheet-x" id="bv-close" data-i18n-aria-label="common.close">[×]</button>
+    <div class="box-body">
+      <div class="muted bv-line" id="bv-est"></div>
+      <h3 class="pl-h" data-i18n="bv.history"></h3>
+      <div class="muted bv-line" id="bv-avg"></div>
+      <div class="ch-wrap bv-chart" id="bv-sums"></div>
+      <div id="bv-meters"></div>
+      <div id="bv-tariff-sec" hidden>
+        <h3 class="pl-h" data-i18n="bv.tariffs"></h3>
+        <div class="pf-meters" id="bv-tariffs"></div>
+        <div id="bv-error" class="form-error" role="alert"></div>
+        <button type="button" class="btn ghost" id="bv-tariff-save" data-i18n="bv.tariffSave"></button>
+      </div>
+      <button type="button" class="btn primary" id="bv-edit" data-i18n="bv.edit"></button>
     </div>
   </section>
 
