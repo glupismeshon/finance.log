@@ -337,6 +337,32 @@ dialog .btn { width: 100%; margin-top: 16px; }
 .dialog-close { position: absolute; top: -9px; right: 12px; padding: 0 7px; background: var(--bg); line-height: 18px; }
 
 /* ---------- Планшет: две колонки ---------- */
+/* ---------- Чек в форме расхода ---------- */
+.receipt-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0 10px; margin-top: 4px; }
+.receipt-bar[hidden], .receipt[hidden], .receipt-diff[hidden], #amount-note[hidden], #amount-mode[hidden], .ri-hint[hidden], #diff-discount[hidden], #diff-fee[hidden], #diff-fix[hidden] { display: none; }
+.receipt { margin-top: 8px; padding: 10px 0 2px; border-top: 1px dashed var(--border-dim); border-bottom: 1px dashed var(--border-dim); }
+.ritem { padding-bottom: 10px; }
+.ritem + .ritem { padding-top: 10px; border-top: 1px dashed var(--border-dim); }
+.ri-top, .ri-bot { display: flex; align-items: center; gap: 6px; }
+.ri-bot { margin-top: 6px; }
+.ri-name { flex: 1 1 auto; min-width: 0; }
+.ritem.item .ri-cat { flex: 0 0 40%; width: 40%; }
+.ri-qty { flex: 0 0 72px; width: 72px; padding-left: 8px; padding-right: 8px; }
+.ri-unit { flex: 0 0 84px; width: 84px; }
+.ri-amt { flex: 1 1 auto; min-width: 0; text-align: right; }
+.ritem:not(.item) .ri-amt { flex: 0 0 110px; width: 110px; }
+.ri-sign { flex: none; width: 14px; text-align: center; color: var(--muted); }
+.ri-x { flex: none; color: var(--muted); padding: 0 4px; }
+.ri-x:hover { color: var(--over); }
+.ri-hint { margin-top: 4px; }
+.ri-sug { margin-top: 6px; }
+.receipt-add { display: flex; flex-wrap: wrap; gap: 2px 14px; padding: 4px 0; }
+.receipt-sum { margin-top: 2px; }
+.receipt-diff { margin-top: 8px; color: var(--over); font-size: 12.5px; }
+.receipt-diff-btns { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 4px; }
+.receipt-diff-btns .bracket { color: var(--text); }
+#amount:read-only { color: var(--text); }
+
 @media (max-width: 899px) {
   .layout {
     grid-template-columns: minmax(0, 1fr) 320px;
@@ -470,6 +496,10 @@ dialog .btn { width: 100%; margin-top: 16px; }
   .date-row .bracket { padding: 13px 6px; margin: -13px 0; }
   #entry-form:not(.date-open) #date-field { display: none; }
   #entry-form.date-open .date-row { display: none; }
+  .receipt-bar .bracket, .receipt-add .bracket, .receipt-diff-btns .bracket, .ri-x { min-height: 44px; padding: 0 2px; }
+  .ri-x { min-width: 44px; padding: 0; }
+  .ritem .ri-name, .ritem .ri-amt, .ritem .ri-qty, .ritem .ri-cat, .ritem .ri-unit { font-size: 16px; min-height: 44px; }
+  .ritem .ri-amt { font-weight: 500; }
   #save-button { min-height: 52px; font-size: 14px; }
   #cancel-edit, .form-hint { display: none; }
 }

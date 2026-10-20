@@ -13,6 +13,7 @@
   let state = schema.empty(todayISO()), mode = "expense", filter = "all", trash = false, editing = null, pendingImport = null, locked = false;
   let undoId = null, tab = "journal", currentAccount = null, showArchived = false, accountEditing = null, reconAccount = null, activeSheet = null;
   let selCat = null, catTouched = false, accTouched = false, catFilter = "all", catKind = "expense", showCatArchived = false, categoryEditing = null;
+  let receipt = {open: false, manual: false, rows: []};
   let settings = boot.get();
   I.setLang(I.resolve(settings.lang));
   const mobileQuery = window.matchMedia("(max-width: 599px)");
@@ -30,7 +31,12 @@
   const catById = id => state.categories.find(c => c.id === id);
   const catName = c => c.name || t("cat." + c.key);
   const catPath = c => { const p = c.parentId && catById(c.parentId); return p ? `${catName(p)}/${catName(c)}` : catName(c); };
-  const opCat = op => { const id = op.allocations[0] && op.allocations[0].categoryId; return id ? catById(id) : null; };
+  // категория операции: у чека с несколькими категориями — самая крупная
+  const opCat = op => {
+    let best = null;
+    for (const a of op.allocations) if (!best || a.amountCents > best.amountCents) best = a;
+    return best && best.categoryId ? catById(best.categoryId) : null;
+  };
   const money = cents => I.fmtMoney(cents);
   const signed = cents => (cents > 0 ? "+" : "") + money(cents);
   const amountInput = cents => { const v = (cents / 100).toFixed(2); return I.getLang() === "ru" ? v.replace(".", ",") : v; };
@@ -130,11 +136,13 @@
     }
     const sc = selCat && catById(selCat);
     if (!plain || (sc && sc.kind !== type)) selCat = null;
+    syncReceipt();
     renderFormSuggest();
   }
   // ---------- подсказки в форме: где / категория ----------
   function renderFormSuggest() {
     const type = mode;
+    refreshRowCats();
     if (type === "transfer") { $("amount-hint").hidden = true; return; }
     // чипы магазинов
     const text = $("merchant").value, key = suggest.merchantKey(text);
@@ -190,6 +198,7 @@
   function resetForm(focus = false) {
     editing = null;
     $("entry-form").reset();
+    resetReceipt();
     selCat = null; catTouched = false; accTouched = false;
     toggleCategoryTree(false);
     $("date").value = today();
@@ -211,6 +220,7 @@
     $("merchant").value = entry.merchant || "";
     const ec = opCat(entry);
     selCat = ec ? ec.id : null; catTouched = true; accTouched = true;
+    if (entry.items) { selCat = receiptFallback(entry); loadReceipt(entry); } else resetReceipt();
     toggleCategoryTree(false);
     $("cancel-edit").hidden = false;
     $("delete-entry").hidden = false;
@@ -267,14 +277,13 @@
   }
   function catMatch(entry) {
     if (catFilter === "all") return true;
-    const c = opCat(entry);
-    return !!c && (c.id === catFilter || c.parentId === catFilter);
+    return entry.allocations.some(a => { const c = a.categoryId && catById(a.categoryId); return !!c && (c.id === catFilter || c.parentId === catFilter); });
   }
   function renderEntries() {
     const query = $("search").value.trim().toLocaleLowerCase(I.locale());
     const accFilter = effectiveAccount(), onAcc = accFilter !== "all";
     const entries = state.operations.filter(e => e.deleted === trash && (filter === "all" || e.type === filter) && (!onAcc || e.legs.some(l => l.accountId === accFilter)) && catMatch(e) &&
-      (!query || `${I.stored(e.note)} ${e.merchant || ""} ${opCat(e) ? catPath(opCat(e)) : ""} ${amountInput(amountOf(e))} ${e.legs.map(l => accName(l.accountId)).join(" ")}`.toLocaleLowerCase(I.locale()).includes(query)))
+      (!query || `${I.stored(e.note)} ${e.merchant || ""} ${opCat(e) ? catPath(opCat(e)) : ""} ${amountInput(amountOf(e))} ${(e.items || []).map(i => i.name).join(" ")} ${e.legs.map(l => accName(l.accountId)).join(" ")}`.toLocaleLowerCase(I.locale()).includes(query)))
       .sort((a,b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
     $("entry-count").textContent = tp("journal.count", entries.length);
     const container = $("entries"); container.replaceChildren();
@@ -318,12 +327,15 @@
       if (merchantText && noteText) row.append(node("div","tnote",noteText));
       const meta = node("div","tmeta");
       const metaText = node("span","tmeta-text");
+      const itemsN = entry.items ? entry.items.filter(i => i.kind === "item").length : 0;
+      const posText = itemsN ? tp("receipt.positions", itemsN) : "";
       if (cat) {
+        if (posText) metaText.append(document.createTextNode(posText + " · "));
         const link = node("button","bracket cat-link",catPath(cat)); link.type = "button";
         link.setAttribute("aria-label",t("filter.catTap",{name: catPath(cat)}));
         link.addEventListener("click",ev=>{ ev.stopPropagation(); setCatFilter(cat.id); });
         metaText.append(link,document.createTextNode([accText,trash ? t("row.deleted") : ""].filter(Boolean).map(x=>" · "+x).join("")));
-      } else metaText.textContent = [label,accText,trash ? t("row.deleted") : ""].filter(Boolean).join(" · ");
+      } else metaText.textContent = [posText,label,accText,trash ? t("row.deleted") : ""].filter(Boolean).join(" · ");
       meta.append(metaText);
       const actions = node("span","row-actions");
       if (trash) {
@@ -561,6 +573,226 @@
   $("merchant").addEventListener("input", () => { applyMerchantHint(false); renderFormSuggest(); });
   $("category-all").addEventListener("click", () => toggleCategoryTree($("category-tree").hidden));
   $("account").addEventListener("change", () => { accTouched = true; });
+  $("amount").addEventListener("input", syncReceipt);
+
+
+  // ---------- чек в форме расхода ----------
+  const withoutItems = op => { if (!op) return op; const {items, ...rest} = op; return rest; };
+  const moneyShort = cents => money(cents).replace(/[,.]00(?= ₽)/, "");
+  const unitLabel = u => t("unit." + u);
+  const priceUnit = u => u === "g" ? "kg" : u === "ml" ? "l" : u;
+  const receiptActive = () => mode === "expense" && receipt.open;
+  function formatQty(milli) {
+    const v = (milli / 1000).toFixed(3).replace(/\.?0+$/, "");
+    return I.getLang() === "ru" ? v.replace(".", ",") : v;
+  }
+  function parseQty(value) {
+    const clean = String(value).trim().replace(/[\s  ]/g, "").replace(",", ".");
+    if (!/^\d+(?:\.\d{1,3})?$/.test(clean)) throw new Error(t("err.qty"));
+    const [whole, frac = ""] = clean.split(".");
+    const milli = Number(whole) * 1000 + Number(frac.padEnd(3, "0"));
+    if (!Number.isSafeInteger(milli) || milli <= 0 || milli > 1e9) throw new Error(t("err.qty"));
+    return milli;
+  }
+  const rowCents = r => { try { return M.parseAmount(r.amount); } catch { return 0; } };
+  const receiptSum = () => receipt.rows.reduce((s, r) => s + (r.kind === "discount" ? -rowCents(r) : rowCents(r)), 0);
+  const receiptCount = () => receipt.rows.filter(r => r.kind === "item" && (r.name.trim() || r.amount.trim())).length;
+  const receiptTotal = items => items.reduce((s, i) => s + (i.kind === "discount" ? -i.amountCents : i.amountCents), 0);
+  const blankRow = r => !r.name.trim() && !r.amount.trim();
+  const newRow = kind => ({id: newId(), kind, name: "", qty: "1", unit: "pcs", amount: "", catId: null});
+  function resetReceipt() {
+    receipt = {open: false, manual: false, rows: []};
+    $("receipt-rows").replaceChildren();
+  }
+  function loadReceipt(entry) {
+    receipt = {open: true, manual: false, rows: entry.items.map(i => ({id: i.id, kind: i.kind, name: i.name, qty: formatQty(i.qtyMilli), unit: i.unit, amount: amountInput(i.amountCents), catId: i.categoryId || null}))};
+    $("receipt-rows").replaceChildren(...receipt.rows.map(buildRow));
+  }
+  // fallback-категория покупки в операции не хранится: подбираем ту, что воспроизводит allocations
+  function receiptFallback(entry) {
+    const want = new Map(entry.allocations.map(a => [a.categoryId, a.amountCents]));
+    const cands = [...entry.allocations].sort((a, b) => b.amountCents - a.amountCents).map(a => a.categoryId).filter(x => x !== null);
+    for (const fb of [...cands, null]) {
+      try {
+        const got = journal.allocationsFromItems(entry.items, fb);
+        if (got.length === want.size && got.every(a => want.get(a.categoryId) === a.amountCents)) return fb;
+      } catch {}
+    }
+    return null;
+  }
+  function collectReceipt() {
+    const items = [];
+    receipt.rows.forEach((r, i) => {
+      if (blankRow(r)) return;
+      const n = i + 1, fail = why => { throw new Error(t("err.receiptRow", {n, why})); };
+      let amountCents;
+      try { amountCents = M.parseAmount(r.amount); } catch (e) { fail(I.err(e)); }
+      if (r.kind === "item") {
+        if (!r.name.trim()) fail(t("err.receiptName"));
+        let qtyMilli;
+        try { qtyMilli = parseQty(r.qty); } catch (e) { fail(e.message); }
+        items.push({id: r.id, kind: "item", name: r.name.trim(), qtyMilli, unit: r.unit, amountCents, categoryId: r.catId || null});
+      } else items.push({id: r.id, kind: r.kind, name: r.name.trim(), qtyMilli: 1000, unit: "pcs", amountCents, categoryId: null});
+    });
+    if (!items.length) return null;
+    const goods = items.filter(i => i.kind === "item").reduce((s, i) => s + i.amountCents, 0);
+    if (!goods) throw new Error(t("err.receiptNoItems"));
+    if (items.filter(i => i.kind === "discount").reduce((s, i) => s + i.amountCents, 0) >= goods) throw new Error(t("err.discountBig"));
+    return items;
+  }
+  function syncReceipt() {
+    const expense = mode === "expense", on = expense && receipt.open;
+    $("receipt-bar").hidden = !expense;
+    $("receipt-toggle").textContent = t(receipt.open ? "receipt.remove" : "receipt.add");
+    $("receipt-toggle").setAttribute("aria-expanded", String(receipt.open));
+    $("receipt").hidden = !on;
+    $("amount-note").hidden = $("amount-mode").hidden = !on;
+    $("amount").readOnly = on && !receipt.manual;
+    let diff = null;
+    if (on) {
+      const sum = receiptSum();
+      if (!receipt.manual) $("amount").value = sum > 0 ? amountInput(sum) : "";
+      else { try { diff = M.parseAmount($("amount").value) - sum; } catch {} }
+      $("amount-note").textContent = t(receipt.manual ? "receipt.manualTotal" : "receipt.fromReceipt");
+      $("amount-mode").textContent = t(receipt.manual ? "receipt.modeAuto" : "receipt.modeManual");
+      $("receipt-sum").textContent = t("receipt.sum", {n: receiptCount(), sum: money(sum)});
+      const bad = diff !== null && diff !== 0;
+      $("receipt-diff").hidden = !bad;
+      if (bad) {
+        $("receipt-diff-text").textContent = t("receipt.diff", {diff: signed(diff)});
+        $("diff-discount").hidden = diff > 0;
+        $("diff-fee").hidden = diff < 0;
+        $("diff-discount").textContent = t("receipt.asDiscount", {sum: "−" + money(Math.abs(diff))});
+        $("diff-fee").textContent = t("receipt.asFee", {sum: "+" + money(Math.abs(diff))});
+        $("diff-fix").hidden = sum <= 0;
+        $("diff-fix").textContent = t("receipt.fix", {sum: money(sum)});
+      }
+    } else $("receipt-diff").hidden = true;
+    $("save-button").disabled = on && diff !== null && diff !== 0;
+  }
+  function defaultCatLabel() { const c = selCat && catById(selCat); return c ? catPath(c) : t("form.categoryNone"); }
+  function refreshRowCats() {
+    document.querySelectorAll("#receipt-rows .ri-cat option[value='']").forEach(o => { o.textContent = defaultCatLabel(); });
+  }
+  function fillRowCat(select, r) {
+    const opts = [["", defaultCatLabel()]];
+    for (const {cat, children} of cats.tree(state, "expense")) {
+      opts.push([cat.id, catPath(cat)]);
+      children.forEach(k => opts.push([k.id, catPath(k)]));
+    }
+    const cur = r.catId && catById(r.catId);
+    if (cur && !opts.some(o => o[0] === cur.id)) opts.push([cur.id, catPath(cur)]);
+    select.replaceChildren(...opts.map(([v, label]) => { const o = document.createElement("option"); o.value = v; o.textContent = label; return o; }));
+    select.value = cur ? cur.id : "";
+  }
+  function lastItemInfo(name) {
+    const key = suggest.itemKey(name);
+    if (!key) return null;
+    return suggest.items(state, $("merchant").value.trim() || null, name, 50).find(x => suggest.itemKey(x.name) === key) || null;
+  }
+  const priceText = x => `${moneyShort(x.lastUnitPriceCents)}/${unitLabel(priceUnit(x.unit))}`;
+  function buildRow(r) {
+    const el = node("div", `ritem ${r.kind}`); el.dataset.id = r.id;
+    const field = (cls, value, aria, ph) => {
+      const input = node("input", cls); input.type = "text"; input.autocomplete = "off"; input.value = value;
+      input.setAttribute("aria-label", t(aria)); if (ph) input.placeholder = ph;
+      return input;
+    };
+    const name = field("ri-name", r.name, "receipt.nameAria", t(r.kind === "item" ? "receipt.namePh" : r.kind === "discount" ? "receipt.discountPh" : "receipt.feePh"));
+    name.maxLength = 80; name.enterKeyHint = "next";
+    if (r.kind === "item") name.autocapitalize = "sentences";
+    const amt = field("ri-amt", r.amount, "receipt.amountAria", t("amount.ph"));
+    amt.inputMode = "decimal"; amt.maxLength = 20;
+    const rm = node("button", "bracket ri-x", "[×]"); rm.type = "button"; rm.setAttribute("aria-label", t("receipt.removeRow"));
+    rm.addEventListener("click", () => { receipt.rows = receipt.rows.filter(x => x !== r); el.remove(); syncReceipt(); });
+    amt.addEventListener("input", () => { r.amount = amt.value; syncReceipt(); });
+    if (r.kind !== "item") {
+      const sign = node("span", "ri-sign", r.kind === "discount" ? "−" : "+"); sign.setAttribute("aria-hidden", "true");
+      const top = node("div", "ri-top"); top.append(sign, name, amt, rm);
+      name.addEventListener("input", () => { r.name = name.value; });
+      el.append(top);
+      return el;
+    }
+    const cat = node("select", "ri-cat"); cat.setAttribute("aria-label", t("receipt.catAria")); fillRowCat(cat, r);
+    cat.addEventListener("change", () => { r.catId = cat.value || null; });
+    const top = node("div", "ri-top"); top.append(name, cat, rm);
+    const sug = node("div", "ri-sug chips"); sug.setAttribute("role", "group"); sug.setAttribute("aria-label", t("receipt.sugAria"));
+    const qty = field("ri-qty", r.qty, "receipt.qtyAria", "1"); qty.inputMode = "decimal"; qty.maxLength = 10;
+    const unit = node("select", "ri-unit"); unit.setAttribute("aria-label", t("receipt.unitAria"));
+    unit.replaceChildren(...schema.UNITS.map(u => { const o = document.createElement("option"); o.value = u; o.textContent = unitLabel(u); return o; }));
+    unit.value = r.unit;
+    const bot = node("div", "ri-bot"); bot.append(qty, unit, amt);
+    const hint = node("div", "ri-hint muted"); hint.hidden = true;
+    const showHint = () => {
+      const found = lastItemInfo(r.name);
+      hint.hidden = !found;
+      if (found) hint.textContent = t("receipt.last", {qty: `${formatQty(found.lastQtyMilli)} ${unitLabel(found.unit)}`, sum: moneyShort(found.lastAmountCents), price: priceText(found)});
+    };
+    const showSug = () => {
+      const q = r.name.trim(), key = suggest.itemKey(q);
+      const list = q ? suggest.items(state, $("merchant").value.trim() || null, q, 5).filter(x => suggest.itemKey(x.name) !== key) : [];
+      sug.replaceChildren(...list.map(x => {
+        const b = chip(`${x.name} · ${priceText(x)}`, false, () => {
+          r.name = x.name; name.value = x.name;
+          r.qty = formatQty(x.lastQtyMilli); qty.value = r.qty;
+          r.unit = x.unit; unit.value = x.unit;
+          const c = x.categoryId && catById(x.categoryId);
+          if (c && c.kind === "expense" && !c.archived) { r.catId = c.id; fillRowCat(cat, r); }
+          sug.replaceChildren(); showHint(); syncReceipt(); amt.focus();
+        });
+        b.addEventListener("mousedown", ev => ev.preventDefault());
+        return b;
+      }));
+    };
+    name.addEventListener("input", () => { r.name = name.value; showSug(); showHint(); syncReceipt(); });
+    name.addEventListener("focus", showSug);
+    name.addEventListener("blur", () => setTimeout(() => sug.replaceChildren(), 300));
+    qty.addEventListener("input", () => { r.qty = qty.value; });
+    unit.addEventListener("change", () => { r.unit = unit.value; });
+    el.append(top, sug, bot, hint);
+    showHint();
+    return el;
+  }
+  function addRow(kind, focus = true) {
+    const r = newRow(kind); receipt.rows.push(r);
+    const el = buildRow(r); $("receipt-rows").append(el);
+    syncReceipt();
+    if (focus) el.querySelector(kind === "item" ? ".ri-name" : ".ri-amt").focus();
+    return r;
+  }
+  function toggleReceipt() {
+    receipt.open = !receipt.open;
+    if (receipt.open && !receipt.rows.length) {
+      receipt.manual = $("amount").value.trim() !== "";
+      addRow("item", false);
+    }
+    syncReceipt();
+    if (receipt.open && receipt.rows.length === 1 && blankRow(receipt.rows[0])) document.querySelector("#receipt-rows .ri-name").focus();
+  }
+  $("receipt-toggle").addEventListener("click", toggleReceipt);
+  $("receipt-add-item").addEventListener("click", () => addRow("item"));
+  $("receipt-add-discount").addEventListener("click", () => addRow("discount"));
+  $("receipt-add-fee").addEventListener("click", () => addRow("fee"));
+  $("amount-mode").addEventListener("click", () => {
+    receipt.manual = !receipt.manual;
+    syncReceipt();
+    if (receipt.manual) { $("amount").focus(); $("amount").select(); }
+  });
+  function addDiffRow(kind, cents) {
+    const r = addRow(kind, false); r.amount = amountInput(cents);
+    document.querySelector(`#receipt-rows [data-id="${r.id}"] .ri-amt`).value = r.amount;
+    syncReceipt();
+  }
+  $("diff-discount").addEventListener("click", () => { const d = receiptDiff(); if (d < 0) addDiffRow("discount", -d); });
+  $("diff-fee").addEventListener("click", () => { const d = receiptDiff(); if (d > 0) addDiffRow("fee", d); });
+  $("diff-fix").addEventListener("click", () => { receipt.manual = false; syncReceipt(); });
+  function receiptDiff() { try { return M.parseAmount($("amount").value) - receiptSum(); } catch { return 0; } }
+  $("receipt").addEventListener("keydown", ev => {
+    if (ev.key !== "Enter" || ev.target.tagName !== "INPUT") return;
+    ev.preventDefault();
+    const all = [...$("receipt").querySelectorAll("input")], i = all.indexOf(ev.target);
+    if (all[i + 1]) all[i + 1].focus(); else ev.target.blur();
+  });
 
   // ---------- счета: форма и сверка ----------
   function openAccountForm(id) {
@@ -654,7 +886,15 @@
   $("entry-form").addEventListener("submit",event=>{
     event.preventDefault(); $("form-error").textContent = "";
     try {
-      const amountCents = M.parseAmount($("amount").value);
+      let receiptItems = null, amountCents = 0;
+      if (mode === "expense" && receipt.open) {
+        receiptItems = collectReceipt();
+        if (receiptItems) {
+          amountCents = receiptTotal(receiptItems);
+          if (receipt.manual && M.parseAmount($("amount").value) !== amountCents) throw new Error(t("err.receiptDiff"));
+        }
+      }
+      if (!receiptItems) amountCents = M.parseAmount($("amount").value);
       const date = $("date").value;
       if (!M.validDate(date)) throw new Error(t("err.date"));
       if (date > today()) throw new Error(t("err.future"));
@@ -667,7 +907,7 @@
       if (mode === "transfer") {
         if (!toId || accountId === toId) throw new Error(t("err.twoAccounts"));
         const legs = [{accountId,amountCents:-amountCents},{accountId:toId,amountCents}];
-        if (previous) next = journal.upsertOperation(state,{...previous,type:"transfer",date,note,deleted:false,legs,allocations:[]},now);
+        if (previous) next = journal.upsertOperation(state,{...withoutItems(previous),type:"transfer",date,note,deleted:false,legs,allocations:[]},now);
         else {
           const transfer = journal.makeTransfer({id:newId(),fromId:accountId,toId,amountCents,date,note,now});
           next = journal.upsertOperation(state,transfer,now);
@@ -676,9 +916,13 @@
         }
         done = t(previous ? "msg.changesSaved" : "msg.transferDone");
       } else {
-        const entry = {...previous,id:previous?.id || newId(),type:mode,date,note,createdAt:previous?.createdAt || now,deleted:false,
+        const entry = {...withoutItems(previous),id:previous?.id || newId(),type:mode,date,note,createdAt:previous?.createdAt || now,deleted:false,
           legs:[{accountId,amountCents:mode === "income" ? amountCents : -amountCents}],
           allocations:mode === "income" ? (selCat ? [{categoryId:selCat,amountCents}] : []) : [{categoryId:selCat,amountCents}]};
+        if (receiptItems) {
+          entry.items = receiptItems;
+          entry.allocations = journal.allocationsFromItems(receiptItems, selCat);
+        }
         const merchant = $("merchant").value.trim();
         if (merchant) entry.merchant = merchant; else delete entry.merchant;
         next = journal.upsertOperation(state,entry,now);

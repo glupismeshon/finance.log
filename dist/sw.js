@@ -1,5 +1,5 @@
 "use strict";
-const CACHE = "money-log-v11";
+const CACHE = "money-log-v12";
 const ASSETS = [
   "./",
   "index.html",
@@ -15,6 +15,7 @@ const ASSETS = [
   "core/journal.js",
   "core/suggest.js",
   "core/views.js",
+  "core/analytics.js",
   "icon.svg",
   "manifest.webmanifest",
   "apple-touch-icon.png",

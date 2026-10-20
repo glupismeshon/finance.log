@@ -26,6 +26,7 @@
   <script src="core/journal.js" defer></script>
   <script src="core/suggest.js" defer></script>
   <script src="core/views.js" defer></script>
+  <script src="core/analytics.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body data-tab="journal">
@@ -256,6 +257,28 @@
             <label class="field-label" for="amount" data-i18n="form.amount"></label>
             <div class="amount-field"><input id="amount" type="text" inputmode="decimal" data-i18n-placeholder="amount.ph" autocomplete="off" required maxlength="20"><span aria-hidden="true">₽</span></div>
             <div class="amount-hint muted" id="amount-hint" hidden></div>
+            <div class="receipt-bar" id="receipt-bar">
+              <button type="button" class="bracket" id="receipt-toggle" aria-expanded="false" aria-controls="receipt"></button>
+              <span class="muted" id="amount-note" hidden></span>
+              <button type="button" class="bracket" id="amount-mode" hidden></button>
+            </div>
+            <div class="receipt" id="receipt" hidden>
+              <div class="receipt-rows" id="receipt-rows"></div>
+              <div class="receipt-add">
+                <button type="button" class="bracket" id="receipt-add-item" data-i18n="receipt.addItem"></button>
+                <button type="button" class="bracket" id="receipt-add-discount" data-i18n="receipt.addDiscount"></button>
+                <button type="button" class="bracket" id="receipt-add-fee" data-i18n="receipt.addFee"></button>
+              </div>
+              <div class="receipt-sum muted" id="receipt-sum"></div>
+              <div class="receipt-diff" id="receipt-diff" role="alert" hidden>
+                <div id="receipt-diff-text"></div>
+                <div class="receipt-diff-btns">
+                  <button type="button" class="bracket" id="diff-discount"></button>
+                  <button type="button" class="bracket" id="diff-fee"></button>
+                  <button type="button" class="bracket" id="diff-fix"></button>
+                </div>
+              </div>
+            </div>
             <div id="merchant-field">
               <label class="field-label" for="merchant"><span id="merchant-label"></span> <span class="muted" data-i18n="common.optional"></span></label>
               <input id="merchant" type="text" maxlength="80" autocomplete="off" autocapitalize="sentences" enterkeyhint="next">
