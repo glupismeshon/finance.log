@@ -1,0 +1,10 @@
+{
+  "name": "money-log",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Локальный журнал доходов и расходов",
+  "scripts": {
+    "test": "node --test tests/*.test.cjs",
+    "start": "python3 -m http.server 8765 --bind 127.0.0.1 --directory dist"
+  }
+}
