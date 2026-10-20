@@ -338,6 +338,14 @@ body[data-tab="accounts"][data-account] #screen-account { display: block; }
 .acc-row.archived .acc-mark, .acc-row.archived .acc-name { color: var(--muted); }
 .acc-kind { color: var(--muted); font-size: 12.5px; }
 .acc-bal { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.acc-group { display: flex; justify-content: space-between; gap: 10px; margin-top: 8px; color: var(--muted); font-size: 12.5px; }
+.acc-group:first-child { margin-top: 0; }
+.acc-group .acc-bal { color: var(--muted); }
+.over, .acc-bal.over, .log-line strong.over { color: var(--over); }
+.bal-views { margin-bottom: 6px; }
+.bal-views[hidden] { display: none; }
+.bal-split { margin-top: 10px; }
+.bal-split .tag { color: var(--muted); }
 .acc-total { margin-top: 12px; padding-top: 8px; border-top: 1px dashed var(--border-dim); }
 .acc-archived { margin-top: 6px; }
 .acc-add { margin-top: 16px; }

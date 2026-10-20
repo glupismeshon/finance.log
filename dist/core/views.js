@@ -31,6 +31,25 @@
     result.archived = rows(sorted.filter(a => a.archived));
     return result;
   }
+  function breakdown(state) {
+    const {byAccount} = balances(state);
+    const sums = {debit: 0, cash: 0, savings: 0, credit_card: 0, loan: 0, person: 0};
+    const has = {credit_card: false, loan: false};
+    for (const a of state.accounts) {
+      if (a.kind in sums) sums[a.kind] = check(sums[a.kind] + byAccount[a.id]);
+      if (a.kind in has) has[a.kind] = true;
+    }
+    const own = check(sums.debit + sums.cash), savings = sums.savings, creditCards = sums.credit_card, loans = sums.loan;
+    return {
+      own, savings, creditCards, loans, other: sums.person, hasCards: has.credit_card, hasLoans: has.loan,
+      views: {
+        all: check(own + savings + creditCards + loans),
+        noLoans: check(own + savings + creditCards),
+        noCards: check(own + savings + loans),
+        ownOnly: check(own + savings)
+      }
+    };
+  }
   function spending(state, {from, to, type = "expense", by = "category", accountId} = {}) {
     const parent = new Map((state.categories || []).map(c => [c.id, c.parentId]));
     const sums = new Map();
@@ -48,7 +67,7 @@
     }
     return [...sums].map(([id, cents]) => by === "merchant" ? {merchant: id, cents} : {id, cents}).sort((a, b) => b.cents - a.cents);
   }
-  const api = {balances, totals, accountTotals, spending};
+  const api = {balances, totals, accountTotals, breakdown, spending};
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else (root.MoneyCore = root.MoneyCore || {}).views = api;
 })(globalThis);

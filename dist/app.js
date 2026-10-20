@@ -419,8 +419,18 @@
     return row;
   }
   function renderAccounts() {
-    const rows = views.accountTotals(state), archived = rows.archived;
-    $("accounts-list").replaceChildren(...rows.map(r => accountRow(r, false)));
+    const rows = views.accountTotals(state), archived = rows.archived, bd = views.breakdown(state);
+    const groups = [["acc.groupOwn",["debit","cash"],bd.own],["acc.groupSavings",["savings"],bd.savings],["acc.groupCards",["credit_card"],bd.creditCards],["acc.groupLoans",["loan"],bd.loans],["acc.groupPeople",["person"],bd.other]];
+    const listNodes = [];
+    for (const [key,kinds,sum] of groups) {
+      const part = rows.filter(r => kinds.includes(r.account.kind));
+      if (!part.length) continue;
+      const head = node("div","acc-group"); head.append(node("span","acc-group-name","-- "+t(key)),node("span",`acc-bal${sum < 0 ? " over" : ""}`,money(sum)));
+      listNodes.push(head,...part.map(r => accountRow(r, false)));
+    }
+    const known = groups.flatMap(g => g[1]);
+    listNodes.push(...rows.filter(r => !known.includes(r.account.kind)).map(r => accountRow(r, false)));
+    $("accounts-list").replaceChildren(...listNodes);
     $("accounts-total").textContent = t("acc.total",{sum: money(views.balances(state).total)});
     $("archived-line").hidden = !archived.length;
     $("archived-count").textContent = archived.length;
@@ -473,9 +483,25 @@
       b.setAttribute("aria-current",on ? "page" : "false");
     });
   }
+  function renderBalance() {
+    const bd = views.breakdown(state), debt = bd.hasCards || bd.hasLoans;
+    const view = ["all","noLoans","noCards","ownOnly"].includes(settings.balanceView) ? settings.balanceView : "noLoans";
+    $("balance-views").hidden = !debt;
+    document.querySelectorAll("[data-bal-view]").forEach(b => { const on = b.dataset.balView === view; b.classList.toggle("active",on); b.setAttribute("aria-pressed",String(on)); });
+    bigMoney($("balance"), debt ? bd.views[view] : bd.views.ownOnly);
+    const lines = [["balance.own",bd.own],["balance.savings",bd.savings],["balance.cards",bd.creditCards],["balance.loans",bd.loans],["balance.people",bd.other]].filter(l => l[1] !== 0);
+    $("balance-split").replaceChildren(...lines.map(([key,sum]) => {
+      const line = node("div","log-line");
+      line.append(node("span","tag","--"),node("span","log-name",t(key)),node("strong",sum < 0 ? "over" : "",money(sum)));
+      return line;
+    }));
+  }
+  document.querySelectorAll("[data-bal-view]").forEach(b => b.addEventListener("click",()=>{
+    persistNotice(boot.set({balanceView: b.dataset.balView})); settings = boot.get(); renderBalance();
+  }));
   function render() {
     const sums = views.totals(state);
-    bigMoney($("balance"), sums.balance);
+    renderBalance();
     $("income-total").textContent = "+"+money(sums.income);
     $("expense-total").textContent = "−"+money(sums.expense);
     $("nav-count").textContent = state.operations.filter(e=>!e.deleted).length;
@@ -821,15 +847,24 @@
   });
 
   // ---------- счета: форма и сверка ----------
+  const isDebtKind = k => k === "credit_card" || k === "loan";
+  function syncDebtHint(autoMinus) {
+    const debt = isDebtKind($("account-kind").value);
+    $("account-kind-hint").hidden = !debt;
+    const input = $("account-opening"), v = input.value.trim();
+    if (autoMinus && debt && /^\d/.test(v)) input.value = "-" + v;
+  }
+  $("account-kind").addEventListener("change",()=>syncDebtHint(!accountEditing));
   function openAccountForm(id) {
     accountEditing = id;
     const a = id && accById(id);
     $("account-title").textContent = t(a ? "acform.edit" : "acform.new");
     $("account-name").value = a ? I.stored(a.name) : "";
-    const kinds = ["debit","cash","savings","credit_card"];
+    const kinds = ["debit","cash","savings","credit_card","loan"];
     if (a && !kinds.includes(a.kind)) kinds.push(a.kind);
     $("account-kind").replaceChildren(...kinds.map(k => { const o = document.createElement("option"); o.value = k; o.textContent = I.kindLabel(k); return o; }));
     $("account-kind").value = a ? a.kind : "debit";
+    syncDebtHint(!a);
     $("account-opening").value = a ? amountInput(a.openingCents) : "";
     $("account-date").value = a ? a.openingDate : today();
     $("account-error").textContent = "";

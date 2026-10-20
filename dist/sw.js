@@ -1,5 +1,5 @@
 "use strict";
-const CACHE = "finance-log-v25";
+const CACHE = "finance-log-v26";
 const ASSETS = [
   "./",
   "index.html",

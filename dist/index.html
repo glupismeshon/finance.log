@@ -330,7 +330,14 @@
       <section class="box s-journal" id="balance-box" aria-labelledby="balance-label">
         <h2 class="box-label" id="balance-label" data-i18n="balance.title"></h2>
         <div class="box-body">
+          <div class="filters bal-views" id="balance-views" role="group" data-i18n-aria-label="balance.viewsAria" hidden>
+            <button class="filter" type="button" data-bal-view="all" data-i18n="balance.vAll"></button>
+            <button class="filter" type="button" data-bal-view="noLoans" data-i18n="balance.vNoLoans"></button>
+            <button class="filter" type="button" data-bal-view="noCards" data-i18n="balance.vNoCards"></button>
+            <button class="filter" type="button" data-bal-view="ownOnly" data-i18n="balance.vOwn"></button>
+          </div>
           <div class="balance-number" id="balance">0<span class="balance-decimals">,00 ₽</span></div>
+          <div class="log-lines bal-split" id="balance-split"></div>
           <div class="log-lines">
             <div class="log-line"><span class="tag ok">[ok]</span><span class="log-name" data-i18n="balance.income"></span><strong class="income" id="income-total">+0,00 ₽</strong></div>
             <div class="log-line"><span class="tag warn">[--]</span><span class="log-name" data-i18n="balance.expense"></span><strong id="expense-total">−0,00 ₽</strong></div>
@@ -428,6 +435,7 @@
         <input id="account-name" type="text" maxlength="100" autocomplete="off" data-i18n-placeholder="acform.namePh">
         <label class="field-label" for="account-kind" data-i18n="acform.kind"></label>
         <select id="account-kind"></select>
+        <div class="muted hint" id="account-kind-hint" hidden data-i18n="acform.debtHint"></div>
         <label class="field-label" for="account-opening" data-i18n="acform.opening"></label>
         <div class="amount-field"><input id="account-opening" type="text" inputmode="decimal" data-i18n-placeholder="amount.ph" autocomplete="off" maxlength="21"><span aria-hidden="true">₽</span></div>
         <button type="button" class="bracket sign-btn" data-sign="account-opening" data-i18n="acform.minus"></button>
