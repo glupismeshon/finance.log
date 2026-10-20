@@ -357,6 +357,7 @@
     "settings.dark": "[ тёмная ]",
     "settings.light": "[ светлая ]",
     "settings.darkList": "// тёмные",
+    "settings.blackMetal": "// black metal",
     "settings.lightList": "// светлые",
     "settings.saveFail": "Настройки применены, но браузер не разрешил их сохранить."
 
@@ -719,6 +720,7 @@
     "settings.dark": "[ dark ]",
     "settings.light": "[ light ]",
     "settings.darkList": "// dark",
+    "settings.blackMetal": "// black metal",
     "settings.lightList": "// light",
     "settings.saveFail": "settings applied, but the browser did not allow saving them.",
 

@@ -1041,7 +1041,11 @@
     document.querySelectorAll("[data-set-lang]").forEach(b => { const on = b.dataset.setLang === settings.lang; b.classList.toggle("active",on); b.setAttribute("aria-pressed",String(on)); });
     document.querySelectorAll("[data-set-mode]").forEach(b => { const on = b.dataset.setMode === settings.themeMode; b.classList.toggle("active",on); b.setAttribute("aria-pressed",String(on)); });
     for (const group of ["dark","light"]) {
-      $(`themes-${group}`).replaceChildren(...boot.themes().filter(x => x.dark === (group === "dark")).map(x => themeRow(x,group)));
+      const list = boot.themes().filter(x => x.dark === (group === "dark"));
+      const rows = list.filter(x => !x.group).map(x => themeRow(x,group));
+      const bm = list.filter(x => x.group === "blackmetal");
+      if (bm.length) rows.push(node("div","theme-subhead",t("settings.blackMetal")), ...bm.map(x => themeRow(x,group)));
+      $(`themes-${group}`).replaceChildren(...rows);
     }
   }
 

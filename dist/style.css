@@ -601,3 +601,5 @@ button.an-row:hover .an-name, button.an-row:focus-visible .an-name { color: var(
   .cursor { animation: none; }
   * { scroll-behavior: auto !important; }
 }
+
+.theme-subhead { color: var(--muted); font-size: 12.5px; padding: 14px 0 4px; }
