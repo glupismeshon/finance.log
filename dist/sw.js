@@ -1,5 +1,5 @@
 "use strict";
-const CACHE = "finance-log-v23";
+const CACHE = "finance-log-v24";
 const ASSETS = [
   "./",
   "index.html",
@@ -45,7 +45,7 @@ self.addEventListener("fetch", event => {
   const url = new URL(request.url);
   if (request.method !== "GET" || url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
   event.respondWith(
-    fetch(request)
+    fetch(request, {cache: "no-cache"})
       .then(response => {
         if (response && response.ok) {
           const copy = response.clone();

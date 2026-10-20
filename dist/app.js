@@ -1856,5 +1856,18 @@
   loadAccount();
   if (location.hash === "#settings") setTab("settings");
   resetForm();
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
+  if ("serviceWorker" in navigator) {
+    // новая версия: sw делает skipWaiting + clients.claim → controllerchange → один раз перезагрузить страницу
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloading = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (!hadController || reloading) return;
+      reloading = true; location.reload();
+    });
+    navigator.serviceWorker.register("sw.js", {updateViaCache: "none"}).then(reg => {
+      const check = () => reg.update().catch(()=>{});
+      document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") check(); });
+      setInterval(check, 30 * 60 * 1000);
+    }).catch(()=>{});
+  }
 })();
