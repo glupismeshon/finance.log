@@ -2,7 +2,7 @@
   "use strict";
   const node = typeof module !== "undefined" && module.exports;
   const {validDate, MAX_AMOUNT} = node ? require("./money.js") : root.MoneyCore.money;
-  const OP_TYPES = ["income", "expense"];
+  const OP_TYPES = ["income", "expense", "transfer", "adjustment"];
   const KINDS = ["debit", "cash", "savings", "credit_card", "loan", "person"];
   const FORMAT = "Не удалось прочитать копию money.log. Проверьте формат файла.";
   const BAD_OPS = "В копии есть некорректные или повторяющиеся записи.";
@@ -22,13 +22,17 @@
       if (!plain(l) || typeof l.accountId !== "string" || !accountIds.has(l.accountId) || !cents(l.amountCents)) bad();
       return {accountId: l.accountId, amountCents: l.amountCents};
     });
-    if (legs.length !== 1 || (o.type === "income" ? legs[0].amountCents <= 0 : legs[0].amountCents >= 0)) bad();
+    if (o.type === "transfer") {
+      if (legs.length !== 2 || legs[0].accountId === legs[1].accountId || legs[0].amountCents + legs[1].amountCents !== 0 || legs[0].amountCents === 0) bad();
+    } else if (legs.length !== 1) bad();
+    else if (o.type === "income" ? legs[0].amountCents <= 0 : o.type === "expense" ? legs[0].amountCents >= 0 : legs[0].amountCents === 0) bad();
+    if (o.type === "adjustment" && !o.note.trim()) bad();
     const allocations = o.allocations.map(a => {
       if (!plain(a) || !(a.categoryId === null || typeof a.categoryId === "string") || !cents(a.amountCents) || a.amountCents <= 0) bad();
       return {categoryId: a.categoryId, amountCents: a.amountCents};
     });
-    if (o.type === "income" ? allocations.length : allocations.length && allocations.reduce((s, a) => s + a.amountCents, 0) !== -legs[0].amountCents) bad();
-    const op = {id: o.id, type: o.type, date: o.date, note: o.note, createdAt: o.createdAt, updatedAt: o.updatedAt, deleted: o.deleted, legs, allocations, links: {...o.links}};
+    if (o.type !== "expense" ? allocations.length : allocations.length && allocations.reduce((s, a) => s + a.amountCents, 0) !== -legs[0].amountCents) bad();
+    const op = {id: o.id, type: o.type, date: o.date, note: o.note, createdAt: o.createdAt, updatedAt: o.updatedAt, deleted: o.deleted, legs, allocations, links: o.type === "expense" && typeof o.links.feeOf === "string" && ID.test(o.links.feeOf) ? {feeOf: o.links.feeOf} : {}};
     if (!nested) op.revisions = o.revisions.map(r => {
       if (!plain(r) || !isoOk(r.at)) bad();
       return {at: r.at, before: normOp(r.before, accountIds, true)};
@@ -42,9 +46,12 @@
     const accountIds = new Set();
     const accounts = data.accounts.map(a => {
       if (!plain(a) || typeof a.id !== "string" || !ID.test(a.id) || accountIds.has(a.id) || typeof a.name !== "string" || !a.name.trim() || a.name.length > 100 ||
-        !KINDS.includes(a.kind) || !cents(a.openingCents) || !validDate(a.openingDate) || typeof a.archived !== "boolean") throw new Error(BAD_ACCOUNTS);
+        !KINDS.includes(a.kind) || !cents(a.openingCents) || !validDate(a.openingDate) || typeof a.archived !== "boolean" ||
+        (a.order !== undefined && !Number.isSafeInteger(a.order))) throw new Error(BAD_ACCOUNTS);
       accountIds.add(a.id);
-      return {id: a.id, name: a.name, kind: a.kind, openingCents: a.openingCents, openingDate: a.openingDate, archived: a.archived};
+      const acc = {id: a.id, name: a.name, kind: a.kind, openingCents: a.openingCents, openingDate: a.openingDate, archived: a.archived};
+      if (a.order !== undefined) acc.order = a.order;
+      return acc;
     });
     const ids = new Set();
     const operations = data.operations.map(o => {
@@ -57,10 +64,12 @@
     let income = 0, expense = 0;
     for (const op of operations) {
       if (op.deleted) continue;
-      const leg = op.legs[0], next = sums.get(leg.accountId) + leg.amountCents;
-      if (op.type === "income") income += leg.amountCents; else expense -= leg.amountCents;
-      if (!Number.isSafeInteger(next) || !Number.isSafeInteger(income) || !Number.isSafeInteger(expense)) throw new Error(LIMIT);
-      sums.set(leg.accountId, next);
+      for (const leg of op.legs) {
+        const next = sums.get(leg.accountId) + leg.amountCents;
+        if (op.type === "income") income += leg.amountCents; else if (op.type === "expense") expense -= leg.amountCents;
+        if (!Number.isSafeInteger(next) || !Number.isSafeInteger(income) || !Number.isSafeInteger(expense)) throw new Error(LIMIT);
+        sums.set(leg.accountId, next);
+      }
     }
     let total = 0;
     for (const a of accounts) if (a.kind !== "loan" && a.kind !== "person") total += sums.get(a.id);
