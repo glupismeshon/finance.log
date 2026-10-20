@@ -48,7 +48,10 @@
     $("toast").hidden = false;
     undoId = id;
     $("undo-button").hidden = !id;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { $("toast").hidden = true; undoId = null; }, id ? 6000 : 2500);
   }
+  let toastTimer = null;
   function setMode(type) {
     mode = type;
     document.querySelectorAll("[data-type]").forEach(b => {
