@@ -16,6 +16,7 @@
   let receipt = {open: false, manual: false, rows: []};
   let dayFilter = null, anFresh = true;
   let settings = boot.get();
+  let authReady = false;
   I.setLang(I.resolve(settings.lang));
   const mobileQuery = window.matchMedia("(max-width: 599px)");
   const isMobile = () => mobileQuery.matches;
@@ -431,7 +432,7 @@
     const known = groups.flatMap(g => g[1]);
     listNodes.push(...rows.filter(r => !known.includes(r.account.kind)).map(r => accountRow(r, false)));
     $("accounts-list").replaceChildren(...listNodes);
-    $("accounts-total").textContent = t("acc.total",{sum: money(views.balances(state).total)});
+    renderAccountsTotal();
     $("archived-line").hidden = !archived.length;
     $("archived-count").textContent = archived.length;
     $("archived-toggle").textContent = t(showArchived ? "acc.hide" : "acc.show");
@@ -483,9 +484,17 @@
       b.setAttribute("aria-current",on ? "page" : "false");
     });
   }
+  const balViewKey = () => ["all","noLoans","noCards","ownOnly"].includes(settings.balanceView) ? settings.balanceView : "noLoans";
+  function renderAccountsTotal() {
+    const bd = views.breakdown(state), debt = bd.hasCards || bd.hasLoans, view = balViewKey();
+    const label = {all: "balance.vAll", noLoans: "balance.vNoLoans", noCards: "balance.vNoCards", ownOnly: "balance.vOwn"}[view];
+    $("accounts-total").textContent = debt
+      ? t("acc.totalView", {view: t(label).replace(/^\[|\]$/g, ""), sum: money(bd.views[view])})
+      : t("acc.total", {sum: money(bd.views.ownOnly)});
+  }
   function renderBalance() {
     const bd = views.breakdown(state), debt = bd.hasCards || bd.hasLoans;
-    const view = ["all","noLoans","noCards","ownOnly"].includes(settings.balanceView) ? settings.balanceView : "noLoans";
+    const view = balViewKey();
     $("balance-views").hidden = !debt;
     document.querySelectorAll("[data-bal-view]").forEach(b => { const on = b.dataset.balView === view; b.classList.toggle("active",on); b.setAttribute("aria-pressed",String(on)); });
     bigMoney($("balance"), debt ? bd.views[view] : bd.views.ownOnly);
@@ -497,7 +506,7 @@
     }));
   }
   document.querySelectorAll("[data-bal-view]").forEach(b => b.addEventListener("click",()=>{
-    persistNotice(boot.set({balanceView: b.dataset.balView})); settings = boot.get(); renderBalance();
+    persistNotice(boot.set({balanceView: b.dataset.balView})); settings = boot.get(); renderBalance(); renderAccountsTotal();
   }));
   function render() {
     const sums = views.totals(state);
@@ -511,6 +520,7 @@
     fillCategoryFilter();
     renderAccounts();
     renderCategories();
+    if (authReady) renderAccount();
     setMode(mode, "keep");
     syncChrome();
     renderDayBar();
@@ -1138,6 +1148,8 @@
 
   // ---------- аккаунт и синхронизация ----------
   const auth = {state: "loading", me: null, config: null, error: null};
+  authReady = true;
+  try { const pr = navigator.storage && navigator.storage.persist && navigator.storage.persist(); if (pr && pr.catch) pr.catch(() => {}); } catch {}
   const AUTH_HEADERS = {"X-Requested-With": "finance.log"};
   const SY = globalThis.MoneyCore.sync;
   const SYNC_KEY = "money.log.sync", PARK_DAYS = 7;
@@ -1594,15 +1606,39 @@
     e.preventDefault(); playBrand();
   });
   window.addEventListener("resize", () => { if (!animating) brandFinal(); });
+  const localCount = () => state.operations.filter(o => !o.deleted).length;
+  // записи, которых нет в облаке: {n, kind: "local" | "cloud"} или null
+  function unsyncedInfo() {
+    if (auth.state === "out") { const n = localCount(); return n ? {n, kind: "local"} : null; }
+    if (auth.state !== "in" || !auth.me) return null;
+    if (sync.declined === auth.me.user.id && sync.userId !== auth.me.user.id) { const n = localCount(); return n ? {n, kind: "cloud"} : null; }
+    if (sync.userId !== auth.me.user.id) return null;
+    const seqs = Object.values(sync.pending), parked = parkedList().length;
+    const stale = seqs.length && Date.now() - Math.min(...seqs) > 10 * 60000;
+    return parked || stale ? {n: seqs.length + parked, kind: "cloud"} : null;
+  }
+  function warnRow(info) {
+    const row = node("p", "auth-line warn", t(info.kind === "local" ? "warn.localOnly" : "warn.notInCloud", {records: tp("sync.records", info.n)}));
+    row.setAttribute("role", "status");
+    return row;
+  }
   function renderLogin() {
     const box = $("login-box");
-    const show = auth.state === "out" && !!auth.config && !settings.onboardingDismissed;
+    const info = unsyncedInfo(), warn = info && info.kind === "local";
+    const hideUntil = Number(settings.warnHiddenUntil) || 0;
+    const show = auth.state === "out" && !!auth.config && (!settings.onboardingDismissed || (warn && Date.now() >= hideUntil));
     box.hidden = !show;
+    box.classList.toggle("warn-box", !!warn && show);
+    $("login-warn").hidden = !(warn && show);
     if (!show) return;
+    if (warn) $("login-warn-text").textContent = t("warn.localOnly", {records: tp("sync.records", info.n)});
     const actions = [];
     if (auth.config.telegram) actions.push(authLink("auth.telegram", "/api/auth/telegram/start"));
     if (auth.config.google) actions.push(authLink("auth.google", "/api/auth/google/start"));
-    const later = authButton("login.later", () => { persistNotice(boot.set({onboardingDismissed: true})); settings = boot.get(); renderLogin(); });
+    if (warn) actions.push(authButton("warn.download", doExport));
+    const later = settings.onboardingDismissed
+      ? authButton("warn.hide7", () => { persistNotice(boot.set({warnHiddenUntil: Date.now() + 7 * 864e5})); settings = boot.get(); renderLogin(); })
+      : authButton("login.later", () => { persistNotice(boot.set({onboardingDismissed: true})); settings = boot.get(); renderLogin(); });
     later.classList.add("login-later");
     $("login-actions").replaceChildren(...actions, later);
   }
@@ -1619,9 +1655,12 @@
     else if (auth.state === "offline") rows.push(node("p", "muted auth-line", t("auth.offline")));
     else if (auth.state === "out") {
       rows.push(node("p", "muted auth-line", t("auth.loggedOut")));
+      const wi = unsyncedInfo();
+      if (wi) rows.push(warnRow(wi));
       const actions = node("div", "auth-actions");
       if (auth.config.google) actions.append(authLink("auth.google", "/api/auth/google/start"));
       if (auth.config.telegram) actions.append(authLink("auth.telegram", "/api/auth/telegram/start"));
+      if (wi) actions.append(authButton("warn.download", doExport));
       rows.push(actions);
     } else {
       const me = auth.me, byProvider = {};
@@ -1633,6 +1672,13 @@
       rows.push(handleRow(me));
       const g = byProvider.google, tg = byProvider.telegram, none = t("auth.none");
       rows.push(node("p", "muted auth-line", t("auth.providers", {google: g ? (g.email || g.name || "✓") : none, telegram: tg ? (tg.email || tg.name || "✓") : none})));
+      const ui = unsyncedInfo();
+      if (ui) {
+        rows.push(warnRow(ui));
+        const wa = node("div", "auth-actions");
+        wa.append(authButton("warn.syncNow", () => { if (sync.declined === me.user.id) { sync.declined = null; saveSync(); startOnboarding(); } else syncNow(); }));
+        rows.push(wa);
+      }
       syncBox(rows, me);
       const actions = node("div", "auth-actions");
       if (!g && auth.config.google) actions.append(authLink("auth.linkGoogle", "/api/auth/google/start?link=1"));

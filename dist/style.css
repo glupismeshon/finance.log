@@ -343,6 +343,9 @@ body[data-tab="accounts"][data-account] #screen-account { display: block; }
 .acc-group .acc-bal { color: var(--muted); }
 .over, .acc-bal.over, .log-line strong.over { color: var(--over); }
 .bal-views { margin-bottom: 6px; }
+.bal-views { flex-wrap: wrap; }
+.login-warn { margin: 6px 0 0; }
+.login-warn[hidden] { display: none; }
 .bal-views[hidden] { display: none; }
 .bal-split { margin-top: 10px; }
 .bal-split .tag { color: var(--muted); }
@@ -513,6 +516,8 @@ dialog .btn { width: 100%; margin-top: 16px; }
   .filters { flex: 1 1 0; min-width: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
   .filters::-webkit-scrollbar { display: none; }
   .filter { white-space: nowrap; min-height: 44px; padding: 0 10px; }
+  .bal-views { flex-wrap: wrap; overflow-x: visible; }
+  .bal-views .filter { padding: 0 8px; }
   .search-toggle {
     display: inline-flex; align-items: center; justify-content: center; flex: none;
     width: 44px; height: 44px; background: none; border: 0; border-radius: 4px; color: var(--muted);
