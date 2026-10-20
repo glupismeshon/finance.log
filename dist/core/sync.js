@@ -4,7 +4,7 @@
   const {validate} = node ? require("./schema.js") : root.MoneyCore.schema;
   const EPOCH = "1970-01-01T00:00:00.000Z";
   // state-массив → kind записи
-  const LISTS = [["accounts", "account"], ["categories", "category"], ["schedules", "schedule"], ["reserves", "reserve"], ["budgets", "budget"], ["loans", "loan"], ["operations", "op"]];
+  const LISTS = [["accounts", "account"], ["categories", "category"], ["schedules", "schedule"], ["reserves", "reserve"], ["budgets", "budget"], ["loans", "loan"], ["readings", "reading"], ["operations", "op"]];
   const stateKey = Object.fromEntries(LISTS.map(([k, kind]) => [kind, k]));
   const recordKey = r => r.kind + ":" + r.id;
   const time = v => { const t = Date.parse(v); return Number.isFinite(t) ? t : -Infinity; };
@@ -14,7 +14,7 @@
     const out = [];
     for (const [list, kind] of LISTS) for (const x of state[list] || []) {
       if (!x || typeof x.id !== "string") continue;
-      out.push({kind, id: x.id, updatedAt: stamp(x.updatedAt), deleted: kind === "op" ? !!x.deleted : false, data: x});
+      out.push({kind, id: x.id, updatedAt: stamp(x.updatedAt), deleted: kind === "op" || kind === "reading" ? !!x.deleted : false, data: x});
     }
     return out;
   }
@@ -34,7 +34,7 @@
     if (!list || !r.data || typeof r.data !== "object") return state;
     const arr = state[list] || [];
     const i = arr.findIndex(x => x.id === r.id);
-    const data = r.kind === "op" ? {...r.data, deleted: !!r.deleted} : r.data;
+    const data = r.kind === "op" || r.kind === "reading" ? {...r.data, deleted: !!r.deleted} : r.data;
     return {...state, [list]: i < 0 ? [...arr, data] : arr.map((x, j) => j === i ? data : x)};
   }
   // true — удалённая запись выигрывает у локальной (или локальной нет)

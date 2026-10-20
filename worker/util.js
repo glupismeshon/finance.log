@@ -129,7 +129,7 @@ export function safeAvatar(url) {
 }
 
 // ---- Синхронизация ----
-export const SYNC_KINDS = ["op", "account", "category", "schedule", "reserve", "budget", "loan"];
+export const SYNC_KINDS = ["op", "account", "category", "schedule", "reserve", "budget", "loan", "reading"];
 export const SYNC_LIMITS = {changes: 500, dataBytes: 65536, records: 100000, bodyBytes: 2 * 1024 * 1024, pull: 500};
 const SYNC_ID = /^[\w-]{1,100}$/;
 const SYNC_TIME = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{1,3})?Z$/;

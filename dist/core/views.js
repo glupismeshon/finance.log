@@ -2,6 +2,8 @@
   "use strict";
   const LIMIT = "Общая сумма превышает поддерживаемый предел.";
   const check = n => { if (!Number.isSafeInteger(n)) throw new Error(LIMIT); return n; };
+  // проценты платежа по кредиту = Σ allocations (основной долг — погашение долга, не расход)
+  const interestOf = op => op.allocations.reduce((s, a) => s + a.amountCents, 0);
   function balances(state, uptoDate) {
     const byAccount = {};
     for (const a of state.accounts) byAccount[a.id] = a.openingCents;
@@ -20,6 +22,7 @@
       const sum = op.legs.reduce((s, l) => s + l.amountCents, 0);
       if (op.type === "income") income = check(income + sum);
       else if (op.type === "expense") expense = check(expense + Math.abs(sum));
+      else if (op.type === "loan_payment") expense = check(expense + interestOf(op)); // расход — только проценты
     }
     return {income, expense, balance: balances(state).total};
   }
@@ -54,9 +57,11 @@
     const parent = new Map((state.categories || []).map(c => [c.id, c.parentId]));
     const sums = new Map();
     for (const op of state.operations) {
-      if (op.deleted || op.type !== type || (from && op.date < from) || (to && op.date > to)) continue;
+      const loanPart = type === "expense" && op.type === "loan_payment";
+      if (op.deleted || (op.type !== type && !loanPart) || (from && op.date < from) || (to && op.date > to)) continue;
       const leg = op.legs[0];
       if (accountId && leg.accountId !== accountId) continue;
+      if (loanPart && !op.allocations.length) continue;
       const parts = op.allocations.length ? op.allocations : [{categoryId: null, amountCents: Math.abs(leg.amountCents)}];
       for (const a of parts) {
         let id;
@@ -67,7 +72,13 @@
     }
     return [...sums].map(([id, cents]) => by === "merchant" ? {merchant: id, cents} : {id, cents}).sort((a, b) => b.cents - a.cents);
   }
-  const api = {balances, totals, accountTotals, breakdown, spending};
+  // кредитная карта: доступно = лимит + остаток (остаток ≤ 0 при долге); null — лимит не задан
+  function available(state, accountId) {
+    const a = state.accounts.find(x => x.id === accountId);
+    if (!a || a.kind !== "credit_card" || a.limitCents == null) return null;
+    return check(a.limitCents + balances(state).byAccount[accountId]);
+  }
+  const api = {balances, totals, accountTotals, breakdown, spending, available};
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else (root.MoneyCore = root.MoneyCore || {}).views = api;
 })(globalThis);

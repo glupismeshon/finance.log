@@ -10,10 +10,15 @@
   const pct = (cur, prev) => prev === 0 ? null : Math.round((cur - prev) / Math.abs(prev) * 1000) / 10;
   const inRange = (o, from, to) => (!from || o.date >= from) && (!to || o.date <= to);
   // неудалённые доходы/расходы; сумма всегда положительная
+  // платёж по кредиту — расход только на сумму процентов (Σ allocations)
   function* cash(state, type, from, to) {
     for (const o of state.operations) {
-      if (o.deleted || o.type !== type || !inRange(o, from, to)) continue;
-      yield {o, cents: Math.abs(o.legs[0].amountCents)};
+      if (o.deleted || !inRange(o, from, to)) continue;
+      if (o.type === type) yield {o, cents: Math.abs(o.legs[0].amountCents)};
+      else if (type === "expense" && o.type === "loan_payment") {
+        const cents = o.allocations.reduce((s, a) => s + a.amountCents, 0);
+        if (cents > 0) yield {o, cents};
+      }
     }
   }
   function daily(state, {from, to, type = "expense", accountId} = {}) {

@@ -15,16 +15,19 @@
     const key = name.trim().toLowerCase();
     if (state.accounts.some(a => !a.archived && a.id !== exceptId && a.name.trim().toLowerCase() === key)) throw new Error(DUP);
   }
-  function addAccount(state, {id, name, kind, openingCents, openingDate}, nowISO = new Date().toISOString()) {
+  function addAccount(state, {id, name, kind, openingCents, openingDate, limitCents}, nowISO = new Date().toISOString()) {
     checkName(state, name);
     const order = state.accounts.reduce((m, a) => Math.max(m, a.order ?? 0), -1) + 1;
     const acc = {id, name: name.trim(), kind, openingCents: openingCents || 0, openingDate, archived: false, order, updatedAt: nowISO};
+    if (limitCents != null) acc.limitCents = limitCents;
     return validate({...state, accounts: [...state.accounts, acc]});
   }
   function updateAccount(state, id, patch, nowISO = new Date().toISOString()) {
     const old = find(state, id);
     const next = {...old, updatedAt: nowISO};
     for (const k of ["name", "kind", "openingCents", "openingDate", "order"]) if (patch[k] !== undefined) next[k] = patch[k];
+    if (patch.limitCents !== undefined) { if (patch.limitCents === null) delete next.limitCents; else next.limitCents = patch.limitCents; }
+    if (patch.kind !== undefined && next.kind !== "credit_card") delete next.limitCents;
     checkName(state, next.name, id, old.archived);
     next.name = next.name.trim();
     return validate({...state, accounts: state.accounts.map(a => a.id === id ? next : a)});

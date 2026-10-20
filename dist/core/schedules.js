@@ -63,6 +63,11 @@
     const i = findIdx(state, id);
     const {id: _i, ...rest} = patch || {};
     const next = {...state.schedules[i], ...rest, updatedAt: nowISO};
+    // старый флаг subscription без template: переключаем вид подписка <-> фикс. платёж
+    if (rest.subscription !== undefined && rest.template === undefined) {
+      if (rest.subscription && next.template === "fixed") next.template = "subscription";
+      else if (!rest.subscription && next.template === "subscription") next.template = "fixed";
+    }
     if (next.type !== "transfer") delete next.toAccountId;
     return put(state, i, next);
   }
@@ -80,20 +85,41 @@
     for (const op of state.operations) if (!op.deleted && op.links && op.links.scheduleId && op.links.dueDate) m.set(op.links.scheduleId + "|" + op.links.dueDate, op.id);
     return m;
   }
+  function median(list) {
+    const s = [...list].sort((a, b) => a - b), n = s.length;
+    return n % 2 ? s[(n - 1) / 2] : Math.round((s[n / 2 - 1] + s[n / 2]) / 2);
+  }
+  // оценка суммы для variable: медиана последних 3 подтверждённых, иначе примерная amountCents, иначе 0
+  function estimate(state, scheduleId) {
+    const sc = state.schedules.find(s => s.id === scheduleId);
+    if (!sc) throw new Error("Регулярный платёж не найден.");
+    const ops = state.operations.filter(o => !o.deleted && o.links && o.links.scheduleId === scheduleId && o.links.dueDate)
+      .sort((a, b) => a.links.dueDate < b.links.dueDate ? 1 : a.links.dueDate > b.links.dueDate ? -1 : a.date < b.date ? 1 : a.date > b.date ? -1 : 0)
+      .slice(0, 3).map(o => Math.abs(o.legs[0].amountCents));
+    return ops.length ? median(ops) : sc.amountCents;
+  }
+  // статусы: confirmed | skipped | overdue | due | upcoming; у variable вместо overdue/due — awaiting («ждёт суммы»),
+  // без 60-дневного окна: висит, пока сумму не внесут или дату не пропустят
   function occurrences(state, {from, to, today}) {
     const conf = confirmedMap(state);
+    const opById = new Map(state.operations.map(o => [o.id, o]));
     const oldest = addDays(today, -LOOKBACK);
     const out = [];
     for (const sc of state.schedules) {
       if (sc.archived || sc.paused) continue;
+      const variable = sc.amountMode === "variable";
+      const est = variable ? estimate(state, sc.id) : 0;
       for (const dueDate of dueDates(sc, from, to)) {
         const opId = conf.get(sc.id + "|" + dueDate);
         let status;
         if (opId) status = "confirmed";
         else if (sc.skips.includes(dueDate)) status = "skipped";
+        else if (variable) status = dueDate <= today ? "awaiting" : "upcoming";
         else if (dueDate < oldest) continue;
         else status = dueDate < today ? "overdue" : dueDate === today ? "due" : "upcoming";
         const o = {scheduleId: sc.id, dueDate, amountCents: sc.amountCents, type: sc.type, status};
+        if (variable && !opId) { o.amountCents = est; o.estimated = true; if (est === 0) o.noEstimate = true; }
+        else if (variable && opId) o.amountCents = Math.abs(opById.get(opId).legs[0].amountCents);
         if (opId) o.opId = opId;
         out.push(o);
       }
@@ -102,6 +128,7 @@
   }
 
   function confirmOp(schedule, dueDate, {amountCents, date, id, now} = {}) {
+    if (schedule.template === "loan") throw new Error("Платёж по кредиту подтверждается через MoneyCore.loans.paymentOp.");
     const amt = amountCents === undefined ? schedule.amountCents : amountCents;
     if (!Number.isSafeInteger(amt) || amt <= 0) throw new Error("Сумма должна быть больше нуля.");
     const cat = schedule.categoryId == null ? null : schedule.categoryId;
@@ -152,10 +179,6 @@
     return {items, perMonth: items.reduce((t, x) => t + x.monthlyCents, 0), perYear: items.reduce((t, x) => t + yearlyEquivalent(x.schedule), 0)};
   }
 
-  function median(list) {
-    const s = [...list].sort((a, b) => a - b), n = s.length;
-    return n % 2 ? s[(n - 1) / 2] : Math.round((s[n / 2 - 1] + s[n / 2]) / 2);
-  }
   function detectRecurring(state, today) {
     const since = addDays(today, -120);
     const taken = new Set(state.schedules.filter(s => !s.archived && s.merchant).map(s => s.merchant.trim().toLowerCase()));
@@ -186,7 +209,7 @@
     return out.sort((a, b) => b.count - a.count || (a.merchant < b.merchant ? -1 : 1));
   }
 
-  const api = {addSchedule, updateSchedule, archiveSchedule, setPaused, skipOccurrence, occurrences, confirmOp, deviation, monthlyEquivalent, subscriptions, detectRecurring};
+  const api = {addSchedule, updateSchedule, archiveSchedule, setPaused, skipOccurrence, occurrences, estimate, confirmOp, deviation, monthlyEquivalent, subscriptions, detectRecurring};
   if (node) module.exports = api;
   else (root.MoneyCore = root.MoneyCore || {}).schedules = api;
 })(globalThis);

@@ -2,7 +2,7 @@
   "use strict";
   const node = typeof module !== "undefined" && module.exports;
   const {validDate, MAX_AMOUNT} = node ? require("./money.js") : root.MoneyCore.money;
-  const OP_TYPES = ["income", "expense", "transfer", "adjustment"];
+  const OP_TYPES = ["income", "expense", "transfer", "adjustment", "loan_payment"];
   const KINDS = ["debit", "cash", "savings", "credit_card", "loan", "person"];
   const FORMAT = "Не удалось прочитать копию finance.log. Проверьте формат файла.";
   const BAD_OPS = "В копии есть некорректные или повторяющиеся записи.";
@@ -13,7 +13,7 @@
   const isoOk = v => typeof v === "string" && Number.isFinite(Date.parse(v));
   const cents = v => Number.isSafeInteger(v) && Math.abs(v) <= MAX_AMOUNT;
   const CAT_KEYS = {
-    expense: [["groceries", ["groceries_meat", "groceries_dairy", "groceries_produce", "groceries_other"]], ["transport"], ["housing"], ["subscriptions"], ["health"], ["clothing"], ["fun"], ["household"], ["other_expense"]],
+    expense: [["groceries", ["groceries_meat", "groceries_dairy", "groceries_produce", "groceries_other"]], ["transport"], ["housing"], ["subscriptions"], ["health"], ["clothing"], ["fun"], ["household"], ["loan_interest"], ["other_expense"]],
     income: [["salary"], ["advance"], ["family_help"], ["refund_in"], ["other_income"]]
   };
   const DEFAULT_CATEGORIES = (() => {
@@ -26,7 +26,7 @@
     return list;
   })();
   const defaultCategories = () => DEFAULT_CATEGORIES.map(c => ({...c}));
-  const empty = today => ({version: 2, accounts: [{id: "main", name: "Основной", kind: "debit", openingCents: 0, openingDate: today, archived: false}], categories: defaultCategories(), operations: [], schedules: [], reserves: [], budgets: [], loans: []});
+  const empty = today => ({version: 2, accounts: [{id: "main", name: "Основной", kind: "debit", openingCents: 0, openingDate: today, archived: false}], categories: defaultCategories(), operations: [], schedules: [], reserves: [], budgets: [], loans: [], readings: []});
   const BAD_CATS = "В копии есть некорректные или повторяющиеся категории.";
   const nonEmpty = v => typeof v === "string" && v.trim().length > 0;
   function normCategories(list) {
@@ -101,6 +101,9 @@
     });
     if (o.type === "transfer") {
       if (legs.length !== 2 || legs[0].accountId === legs[1].accountId || legs[0].amountCents + legs[1].amountCents !== 0 || legs[0].amountCents === 0) bad();
+    } else if (o.type === "loan_payment") {
+      // legs[0]: платёж со счёта (<0), legs[1]: основной долг на счёт кредита (>=0, не больше платежа)
+      if (legs.length !== 2 || legs[0].accountId === legs[1].accountId || legs[0].amountCents >= 0 || legs[1].amountCents < 0 || legs[1].amountCents > -legs[0].amountCents) bad();
     } else if (legs.length !== 1) bad();
     else if (o.type === "income" ? legs[0].amountCents <= 0 : o.type === "expense" ? legs[0].amountCents >= 0 : legs[0].amountCents === 0) bad();
     if (o.type === "adjustment" && !o.note.trim()) bad();
@@ -108,12 +111,13 @@
       if (!plain(a) || !(a.categoryId === null || typeof a.categoryId === "string") || !cents(a.amountCents) || a.amountCents <= 0) bad();
       if (a.categoryId !== null) {
         const c = catById.get(a.categoryId);
-        if (!c || c.kind !== o.type) bad();
+        if (!c || c.kind !== (o.type === "loan_payment" ? "expense" : o.type)) bad();
       }
       return {categoryId: a.categoryId, amountCents: a.amountCents};
     });
     if (o.type === "expense") { if (allocations.length && allocations.reduce((s, a) => s + a.amountCents, 0) !== -legs[0].amountCents) bad(); }
     else if (o.type === "income") { if (allocations.length && allocations.reduce((s, a) => s + a.amountCents, 0) !== legs[0].amountCents) bad(); }
+    else if (o.type === "loan_payment") { if (allocations.reduce((s, a) => s + a.amountCents, 0) !== -legs[0].amountCents - legs[1].amountCents) bad(); }
     else if (allocations.length) bad();
     let items;
     if (o.items !== undefined) {
@@ -145,6 +149,11 @@
       links.scheduleId = o.links.scheduleId;
       links.dueDate = o.links.dueDate;
     }
+    if (o.type === "loan_payment") {
+      if (typeof o.links.loanAccountId !== "string" || o.links.loanAccountId !== legs[1].accountId) bad();
+      links.loanAccountId = o.links.loanAccountId;
+      if (o.links.early !== undefined) { if (o.links.early !== "term" && o.links.early !== "payment") bad(); links.early = o.links.early; }
+    }
     const op = {id: o.id, type: o.type, date: o.date, note: o.note, createdAt: o.createdAt, updatedAt: o.updatedAt, deleted: o.deleted, legs, allocations, links};
     if (merchant) op.merchant = merchant;
     if (items) op.items = items;
@@ -154,16 +163,42 @@
     });
     return op;
   }
+  const BAD_LOANS = "В копии есть некорректные кредиты.";
+  const BAD_READINGS = "В копии есть некорректные показания счётчиков.";
   const BAD_SCHEDULES = "В копии есть некорректные или повторяющиеся регулярные платежи.";
+  const TEMPLATES = ["subscription", "fixed", "bill", "income", "loan"];
+  const AMOUNT_MODES = ["fixed", "variable"];
+  const METER_UNITS = ["kWh", "m3", "gcal", "unit"];
   const FREQS = ["monthly", "weekly", "yearly", "days"];
   const intIn = (v, a, b) => Number.isSafeInteger(v) && v >= a && v <= b;
   function normSchedule(s, accountIds, catById) {
     const bad = () => { throw new Error(BAD_SCHEDULES); };
     if (!plain(s) || typeof s.id !== "string" || !ID.test(s.id) || !["expense", "income", "transfer"].includes(s.type) ||
-      typeof s.name !== "string" || !s.name.trim() || s.name.length > 80 || !cents(s.amountCents) || s.amountCents <= 0 ||
+      typeof s.name !== "string" || !s.name.trim() || s.name.length > 80 || !cents(s.amountCents) || s.amountCents < 0 ||
       typeof s.accountId !== "string" || !accountIds.has(s.accountId) || !plain(s.rule) || !validDate(s.startDate) ||
       !(s.endDate === null || (validDate(s.endDate) && s.endDate >= s.startDate)) || typeof s.subscription !== "boolean" ||
       typeof s.paused !== "boolean" || typeof s.archived !== "boolean" || !Array.isArray(s.skips) || s.skips.length > 1000 || !isoOk(s.updatedAt)) bad();
+    // вид регулярного платежа; старые правила без template: подписка / доход / фикс. платёж
+    const template = s.template === undefined ? (s.type === "income" ? "income" : s.subscription ? "subscription" : "fixed") : s.template;
+    if (!TEMPLATES.includes(template)) bad();
+    const amountMode = s.amountMode === undefined ? (template === "bill" ? "variable" : "fixed") : s.amountMode;
+    if (!AMOUNT_MODES.includes(amountMode) || (template === "bill" && amountMode !== "variable") || (template !== "bill" && template !== "income" && amountMode !== "fixed")) bad();
+    if (amountMode === "fixed" && s.amountCents <= 0) bad();
+    if ((template === "income") !== (s.type === "income") || ((template === "subscription" || template === "bill") && s.type !== "expense") || (template === "loan" && s.type !== "transfer")) bad();
+    let meters;
+    if (s.meters !== undefined && !(Array.isArray(s.meters) && !s.meters.length)) {
+      if (template !== "bill" || !Array.isArray(s.meters) || s.meters.length > 20) bad();
+      const mids = new Set();
+      meters = s.meters.map(m => {
+        if (!plain(m) || typeof m.id !== "string" || !ID.test(m.id) || mids.has(m.id) || typeof m.name !== "string" || !m.name.trim() || m.name.length > 60 ||
+          !METER_UNITS.includes(m.unit) || typeof m.archived !== "boolean" || !(m.tariffCents === undefined || m.tariffCents === null || (Number.isSafeInteger(m.tariffCents) && m.tariffCents >= 0 && m.tariffCents <= MAX_AMOUNT))) bad();
+        mids.add(m.id);
+        const out = {id: m.id, name: m.name.trim(), unit: m.unit, archived: m.archived};
+        if (m.tariffCents !== undefined && m.tariffCents !== null) out.tariffCents = m.tariffCents;
+        return out;
+      });
+    }
+    if (s.readingsDay !== undefined && s.readingsDay !== null && (template !== "bill" || !intIn(s.readingsDay, 1, 31))) bad();
     const r = s.rule;
     if (!FREQS.includes(r.freq) || !intIn(r.interval, 1, 365)) bad();
     const rule = {freq: r.freq, interval: r.interval};
@@ -186,7 +221,10 @@
       if (typeof s.merchant !== "string" || s.merchant.trim().length > 80) bad();
       if (s.merchant.trim()) out.merchant = s.merchant.trim();
     }
-    return {...out, rule, startDate: s.startDate, endDate: s.endDate, subscription: s.subscription, paused: s.paused, archived: s.archived,
+    const extra = {};
+    if (meters) extra.meters = meters;
+    if (s.readingsDay != null) extra.readingsDay = s.readingsDay;
+    return {...out, ...extra, template, amountMode, rule, startDate: s.startDate, endDate: s.endDate, subscription: template === "subscription", paused: s.paused, archived: s.archived,
       skips: [...new Set(s.skips)].sort(), updatedAt: s.updatedAt};
   }
   function validate(data) {
@@ -199,7 +237,9 @@
         !KINDS.includes(a.kind) || !cents(a.openingCents) || !validDate(a.openingDate) || typeof a.archived !== "boolean" ||
         (a.order !== undefined && !Number.isSafeInteger(a.order)) || (a.updatedAt !== undefined && !isoOk(a.updatedAt))) throw new Error(BAD_ACCOUNTS);
       accountIds.add(a.id);
+      if (a.limitCents != null && (a.kind !== "credit_card" || !cents(a.limitCents) || a.limitCents < 0)) throw new Error(BAD_ACCOUNTS);
       const acc = {id: a.id, name: a.name, kind: a.kind, openingCents: a.openingCents, openingDate: a.openingDate, archived: a.archived};
+      if (a.limitCents != null) acc.limitCents = a.limitCents;
       if (a.order !== undefined) acc.order = a.order;
       if (a.updatedAt !== undefined) acc.updatedAt = a.updatedAt;
       return acc;
@@ -227,7 +267,28 @@
     for (const a of accounts) if (a.kind !== "loan" && a.kind !== "person") total += sums.get(a.id);
     if (!Number.isSafeInteger(total)) throw new Error(LIMIT);
     const rest = {categories: cats};
-    for (const k of ["reserves", "budgets", "loans"]) rest[k] = data[k].slice();
+    for (const k of ["reserves", "budgets"]) rest[k] = data[k].slice();
+    const kindOf = new Map(accounts.map(a => [a.id, a.kind]));
+    const loanIds = new Set();
+    rest.loans = data.loans.map(l => {
+      const bad = () => { throw new Error(BAD_LOANS); };
+      if (!plain(l) || typeof l.accountId !== "string" || kindOf.get(l.accountId) !== "loan" || loanIds.has(l.accountId) || !cents(l.principalCents) || l.principalCents <= 0 ||
+        !intIn(l.rateBp, 0, 100000) || !intIn(l.termMonths, 1, 600) || !validDate(l.startDate) || !intIn(l.paymentDay, 1, 31) || !["annuity", "diff"].includes(l.method) ||
+        typeof l.scheduleId !== "string" || !ID.test(l.scheduleId) || !isoOk(l.updatedAt)) bad();
+      loanIds.add(l.accountId);
+      return {id: l.accountId, accountId: l.accountId, principalCents: l.principalCents, rateBp: l.rateBp, termMonths: l.termMonths, startDate: l.startDate,
+        paymentDay: l.paymentDay, method: l.method, scheduleId: l.scheduleId, updatedAt: l.updatedAt};
+    });
+    if (data.readings !== undefined && !Array.isArray(data.readings)) throw new Error(FORMAT);
+    const readIds = new Set();
+    rest.readings = (data.readings || []).map(r => {
+      const bad = () => { throw new Error(BAD_READINGS); };
+      if (!plain(r) || typeof r.id !== "string" || !ID.test(r.id) || readIds.has(r.id) || typeof r.scheduleId !== "string" || !ID.test(r.scheduleId) ||
+        typeof r.meterId !== "string" || !ID.test(r.meterId) || !validDate(r.date) || !Number.isSafeInteger(r.valueMilli) || r.valueMilli < 0 ||
+        !isoOk(r.updatedAt) || typeof r.deleted !== "boolean") bad();
+      readIds.add(r.id);
+      return {id: r.id, scheduleId: r.scheduleId, meterId: r.meterId, date: r.date, valueMilli: r.valueMilli, updatedAt: r.updatedAt, deleted: r.deleted};
+    });
     if (data.schedules.length > 1000) throw new Error(BAD_SCHEDULES);
     const schedIds = new Set();
     const schedules = data.schedules.map(x => {
@@ -236,7 +297,7 @@
       schedIds.add(sc.id);
       return sc;
     });
-    return {version: 2, accounts, categories: rest.categories, operations, schedules, reserves: rest.reserves, budgets: rest.budgets, loans: rest.loans};
+    return {version: 2, accounts, categories: rest.categories, operations, schedules, reserves: rest.reserves, budgets: rest.budgets, loans: rest.loans, readings: rest.readings};
   }
   function validateV1(data) {
     if (!data || data.version !== 1 || !Number.isSafeInteger(data.openingCents) || Math.abs(data.openingCents) > MAX_AMOUNT || !Array.isArray(data.entries) || data.entries.length > 100000) throw new Error(FORMAT);
@@ -258,8 +319,19 @@
     if (!Number.isSafeInteger(data.openingCents + income - expense)) throw new Error(LIMIT);
     return {version: 1, openingCents: data.openingCents, entries};
   }
+  // добавляет недостающие стандартные категории по id (старые копии без новых стандартных категорий)
+  function withDefaultCategories(data) {
+    if (!Array.isArray(data.categories)) return data;
+    const have = new Set(data.categories.filter(c => plain(c)).map(c => c.id));
+    // полностью пользовательский список (ни одной стандартной категории) не трогаем
+    if (data.categories.length && !DEFAULT_CATEGORIES.some(c => have.has(c.id))) return data;
+    const missing = defaultCategories().filter(c => !have.has(c.id));
+    if (!missing.length) return data;
+    let order = data.categories.reduce((m, c) => plain(c) && Number.isSafeInteger(c.order) ? Math.max(m, c.order) : m, -1) + 1;
+    return {...data, categories: [...data.categories, ...missing.map(c => ({...c, order: order++}))]};
+  }
   function migrate(data, today) {
-    if (plain(data) && data.version === 2) return validate(Array.isArray(data.categories) && !data.categories.length ? {...data, categories: defaultCategories()} : data);
+    if (plain(data) && data.version === 2) return validate(withDefaultCategories(data));
     if (plain(data) && data.version === 1) {
       const v1 = validateV1(data);
       const openingDate = v1.entries.length ? v1.entries.reduce((m, e) => e.date < m ? e.date : m, v1.entries[0].date) : today;
