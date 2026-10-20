@@ -15,6 +15,18 @@
     "theme.toDark": "[тёмная]",
     "theme.toLightAria": "Включить светлую тему",
     "theme.toDarkAria": "Включить тёмную тему",
+    "privacy.hide": "скрыть суммы",
+    "privacy.show": "показать суммы",
+    "settings.privacy": "приватность",
+    "settings.privacyOnStart": "скрывать суммы при запуске",
+    "dp.aria": "Выбор даты",
+    "dp.prevMonth": "Предыдущий месяц",
+    "dp.nextMonth": "Следующий месяц",
+    "dp.prevYear": "Предыдущий год",
+    "dp.nextYear": "Следующий год",
+    "dp.pickMonth": "Выбрать месяц и год",
+    "dp.today": "[сегодня]",
+    "dp.yesterday": "[вчера]",
 
     "nav.menu": "Меню",
     "nav.sectionsAria": "Разделы",
@@ -378,6 +390,18 @@
     "theme.toDark": "[dark]",
     "theme.toLightAria": "switch to light theme",
     "theme.toDarkAria": "switch to dark theme",
+    "privacy.hide": "hide amounts",
+    "privacy.show": "show amounts",
+    "settings.privacy": "privacy",
+    "settings.privacyOnStart": "hide amounts on launch",
+    "dp.aria": "Choose date",
+    "dp.prevMonth": "Previous month",
+    "dp.nextMonth": "Next month",
+    "dp.prevYear": "Previous year",
+    "dp.nextYear": "Next year",
+    "dp.pickMonth": "Choose month and year",
+    "dp.today": "[today]",
+    "dp.yesterday": "[yesterday]",
 
     "nav.menu": "menu",
     "nav.sectionsAria": "sections",
@@ -786,14 +810,20 @@
   const stored = text => (STORED[text] ? t(STORED[text]) : text);
   const kindLabel = kind => (DICTS[lang]["kind." + kind] !== undefined || ru["kind." + kind] !== undefined ? t("kind." + kind) : kind);
 
+  // режим приватности: все суммы превращаются в маску
+  const MASK = "•••";
+  let privacy = false;
+  const setPrivacy = on => { privacy = !!on; };
+  const isPrivacy = () => privacy;
   function moneyParts(cents) {
+    if (privacy) return {sign: "", integer: MASK, fraction: "", masked: true};
     const abs = new Intl.NumberFormat(locale(), {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(Math.abs(cents) / 100);
     return {sign: cents < 0 ? "−" : "", integer: abs.slice(0, -3), fraction: abs.slice(-3)};
   }
-  // «1 234,56 ₽» (ru) / «1,234.56 ₽» (en); symbol:false — без знака рубля
+  // «1 234,56 ₽» (ru) / «1,234.56 ₽» (en); symbol:false — без знака рубля; в режиме приватности «••• ₽»
   function fmtMoney(cents, symbol = true) {
     const p = moneyParts(cents);
-    return p.sign + p.integer + p.fraction + (symbol ? " ₽" : "");
+    return p.sign + p.integer + p.fraction + (symbol ? " ₽" : "");
   }
   function fmtDate(iso, style = "long") {
     const options = style === "short" ? {day: "2-digit", month: "short", year: "numeric"} : {day: "numeric", month: "long", year: "numeric"};
@@ -815,7 +845,7 @@
     if (!scope) { doc.documentElement.lang = lang; doc.title = t("app.title"); }
   }
 
-  const api = {ru, en, resolve, setLang, getLang, locale, t, tp, plural, err, stored, kindLabel, moneyParts, fmtMoney, fmtDate, applyI18n};
+  const api = {ru, en, resolve, setLang, getLang, locale, t, tp, plural, err, stored, kindLabel, moneyParts, fmtMoney, setPrivacy, isPrivacy, MASK, fmtDate, applyI18n};
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else (root.MoneyCore = root.MoneyCore || {}).i18n = api;
 })(globalThis);
