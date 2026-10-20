@@ -196,6 +196,18 @@
     }
     if (!accTouched && acct.activeAccounts(state).some(a => a.id === h.accountId)) $("account").value = h.accountId;
   }
+  // ---------- календарь ----------
+  const DP = globalThis.MoneyCore.datepicker;
+  const heatForCalendar = () => { const vals = A.daily(state, {type: "expense"}); return {vals, th: A.heatLevels(vals)}; };
+  const dps = {};
+  document.querySelectorAll(".dp").forEach(host => {
+    const id = host.querySelector("input").id;
+    dps[id === "account-date" ? "account" : id === "recon-date" ? "recon" : "date"] = DP.create(host, {
+      heat: heatForCalendar,
+      // на телефоне после выбора возвращаем строку «// дата: …» вместо открытого поля
+      onClose: () => { if (id === "date" && isMobile()) $("entry-form").classList.remove("date-open"); }
+    });
+  });
   function resetForm(focus = false) {
     editing = null;
     $("entry-form").reset();
@@ -208,6 +220,7 @@
     $("cancel-edit").hidden = true;
     $("delete-entry").hidden = true;
     $("entry-form").classList.remove("date-open");
+    DP.closeAll();
     updateDateSummary();
     setMode(mode, "default");
     if (focus) $("amount").focus();
@@ -227,6 +240,7 @@
     $("delete-entry").hidden = false;
     $("form-error").textContent = "";
     $("entry-form").classList.remove("date-open");
+    DP.closeAll();
     updateDateSummary();
     setMode(entry.type, entry.type === "transfer" ? {from: opFrom(entry), to: opTo(entry)} : {from: entry.legs[0].accountId});
     openSheet();
@@ -245,6 +259,7 @@
     document.body.classList.add("sheet-open");
   }
   function closeSheet() {
+    DP.closeAll();
     document.querySelectorAll("#entry-box, .sheet-form").forEach(b => b.classList.remove("open"));
     activeSheet = null;
     $("sheet-backdrop").hidden = true;
@@ -846,7 +861,7 @@
     reconAccount = id;
     $("recon-title").textContent = t("recon.titleFor",{name: accName(id)});
     $("recon-bank").value = ""; $("recon-note").value = ""; $("recon-error").textContent = "";
-    $("recon-date").value = today(); $("recon-date").max = today();
+    $("recon-date").value = today();
     updateRecon();
     openSheet($("recon-box"));
     $("recon-bank").focus();
@@ -962,7 +977,7 @@
   document.querySelectorAll("[data-new]").forEach(b=>b.addEventListener("click",()=>startNew(b.dataset.new)));
   $("date-toggle").addEventListener("click",()=>{
     $("entry-form").classList.add("date-open");
-    $("date").focus();
+    dps.date.open();
   });
   $("date").addEventListener("change",updateDateSummary);
   document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>setTab(b.dataset.tab)));
@@ -1018,6 +1033,28 @@
     const dark = boot.resolve().dark;
     $("theme-button").textContent = t(dark ? "theme.toLight" : "theme.toDark");
     $("theme-button").setAttribute("aria-label", t(dark ? "theme.toLightAria" : "theme.toDarkAria"));
+  }
+  // ---------- приватность ----------
+  function applyPrivacy() {
+    I.setPrivacy(!!settings.privacy);
+    const on = I.isPrivacy(), b = $("privacy-button");
+    b.setAttribute("aria-pressed", String(on));
+    b.setAttribute("aria-label", t(on ? "privacy.show" : "privacy.hide"));
+    b.title = b.getAttribute("aria-label");
+    b.querySelector(".pv-show").toggleAttribute("hidden", on);
+    b.querySelector(".pv-hide").toggleAttribute("hidden", !on);
+    const os = $("privacy-on-start");
+    os.setAttribute("aria-checked", String(!!settings.privacyOnStart));
+    os.classList.toggle("selected", !!settings.privacyOnStart);
+  }
+  function syncPrivacy() {
+    const changed = !!settings.privacy !== I.isPrivacy();
+    applyPrivacy();
+    if (changed) render();
+  }
+  function togglePrivacy() {
+    persistNotice(boot.set({privacy: !settings.privacy}));
+    settings = boot.get(); syncPrivacy();
   }
   function persistNotice(saved) { if (!saved) toast(t("settings.saveFail")); }
   function themeRow(theme, group) {
@@ -1210,7 +1247,7 @@
     const p = Math.pow(10, Math.floor(Math.log10(v))), f = v / p;
     return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
   }
-  const compact = cents => new Intl.NumberFormat(I.locale(), {notation: "compact", maximumFractionDigits: 1}).format(cents / 100);
+  const compact = cents => I.isPrivacy() ? I.MASK : new Intl.NumberFormat(I.locale(), {notation: "compact", maximumFractionDigits: 1}).format(cents / 100);
   function renderAnMonths(range) {
     const list = A.monthly(state, {months: 12, to: range.to});
     const W = Math.max(280, Math.floor($("an-months").clientWidth || 320)), H = 156, top = 14, bot = 20, ph = H - top - bot;
@@ -1287,7 +1324,9 @@
     $("today-label").textContent = I.fmtDate(new Date(),"short");
     updateThemeButton();
     renderSettings();
+    applyPrivacy();
     render();
+    DP.refreshAll();
     if (!$("entry-form").classList.contains("date-open")) updateDateSummary();
     updateRecon();
   }
@@ -1297,6 +1336,13 @@
     settings = boot.get(); applyLanguage();
   }));
   document.querySelectorAll("[data-set-mode]").forEach(b=>b.addEventListener("click",()=>persistNotice(boot.set({themeMode: b.dataset.setMode}))));
+  $("privacy-button").addEventListener("click",togglePrivacy);
+  $("privacy-on-start").addEventListener("click",()=>{ persistNotice(boot.set({privacyOnStart: !settings.privacyOnStart})); settings = boot.get(); applyPrivacy(); });
+  // двойной тап (клик) по большой сумме остатка переключает режим
+  [$("balance"), $("account-balance")].forEach(el => {
+    let last = 0;
+    el.addEventListener("click", () => { const now = Date.now(); if (now - last < 400) { last = 0; togglePrivacy(); } else last = now; });
+  });
   $("theme-button").addEventListener("click",()=>persistNotice(boot.set({themeMode: boot.resolve().dark ? "light" : "dark"})));
   $("settings-nav").addEventListener("click",()=>setTab("settings"));
   $("more-settings").addEventListener("click",()=>setTab("settings"));
@@ -1319,7 +1365,7 @@
   window.addEventListener("storage",event=>{
     if(event.key!==boot.KEY)return;
     settings=boot.get();
-    if(I.resolve(settings.lang)!==I.getLang())applyLanguage();else renderSettings();
+    if(I.resolve(settings.lang)!==I.getLang())applyLanguage();else { renderSettings(); syncPrivacy(); }
   });
   applyLanguage();
   resetForm();

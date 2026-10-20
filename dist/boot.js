@@ -2,7 +2,7 @@
   "use strict";
   // Читает настройки и применяет тему до отрисовки (подключается синхронно в <head> после themes.js).
   const KEY = "money.log.settings", OLD_THEME_KEY = "money.log.theme";
-  const DEFAULTS = {lang: "auto", themeMode: "auto", darkTheme: "githubDark", lightTheme: "ayuLight"};
+  const DEFAULTS = {lang: "auto", themeMode: "auto", darkTheme: "githubDark", lightTheme: "ayuLight", privacy: false, privacyOnStart: false};
   const themes = (root.MoneyCore && root.MoneyCore.themes) || {THEMES: [], DEFAULT_DARK: "githubDark", DEFAULT_LIGHT: "ayuLight"};
   const find = id => themes.THEMES.find(t => t.id === id);
   const listeners = [];
@@ -15,6 +15,8 @@
     if (!raw || typeof raw !== "object") return s;
     if (["auto", "ru", "en"].includes(raw.lang)) s.lang = raw.lang;
     if (["auto", "dark", "light"].includes(raw.themeMode)) s.themeMode = raw.themeMode;
+    if (typeof raw.privacy === "boolean") s.privacy = raw.privacy;
+    if (typeof raw.privacyOnStart === "boolean") s.privacyOnStart = raw.privacyOnStart;
     const d = find(raw.darkTheme), l = find(raw.lightTheme);
     if (d && d.dark) s.darkTheme = d.id;
     if (l && !l.dark) s.lightTheme = l.id;
@@ -76,6 +78,7 @@
   }
 
   settings = load();
+  if (settings.privacyOnStart) settings.privacy = true; // при каждом запуске режим приватности включён
   apply();
   if (mq) {
     const onChange = () => { if (settings.themeMode === "auto") apply(); };

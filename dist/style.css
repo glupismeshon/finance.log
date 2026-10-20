@@ -57,6 +57,12 @@ svg.ico { flex: none; color: var(--muted); }
 .bracket { background: none; border: 0; padding: 0; color: var(--muted); font-size: 12.5px; }
 .bracket:hover, .bracket:focus-visible { color: var(--accent); }
 
+/* ---------- Приватность: кнопка-глаз ---------- */
+.icon-btn { display: inline-flex; align-items: center; justify-content: center; min-width: 28px; min-height: 28px; }
+.icon-btn svg[hidden] { display: none; }
+#privacy-button[aria-pressed="true"] { color: var(--accent); }
+.balance-number { touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+
 /* ---------- Кнопки ---------- */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
@@ -70,7 +76,7 @@ svg.ico { flex: none; color: var(--muted); }
 .btn:disabled { opacity: .5; cursor: default; }
 
 /* ---------- Поля ---------- */
-input[type="text"], input[type="search"], input[type="date"], select {
+input[type="text"], input[type="search"], select {
   width: 100%; min-width: 0; background: var(--bg); color: var(--text);
   border: 1px solid var(--border); border-radius: 6px;
   padding: 8px 11px; font-size: 13px; outline: none;
@@ -83,11 +89,6 @@ select {
 }
 select option { background: var(--bg); color: var(--text); }
 input::placeholder { color: var(--muted); }
-input[type="date"] {
-  min-height: 38px; -webkit-appearance: none; appearance: none; display: block;
-  max-width: 100%; text-align: left;
-}
-input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 input[type="search"]::-webkit-search-cancel-button { filter: grayscale(1); }
 .field-label { display: block; margin: 14px 0 6px; color: var(--muted); font-size: 12.5px; }
 .amount-field { position: relative; }
@@ -213,6 +214,57 @@ strong.income { color: var(--accent); }
 #delete-entry:hover, #delete-entry:focus-visible { color: var(--over); text-decoration: underline; }
 #delete-entry[hidden] { display: none; }
 .form-hint { margin-top: 14px; }
+
+/* ---------- Календарь (datepicker.js) ---------- */
+.dp { position: relative; }
+.dp-trigger {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 38px;
+  background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px 11px; font-size: 13px; text-align: left;
+}
+.dp-trigger:hover, .dp-trigger:focus-visible, .dp.dp-open .dp-trigger { border-color: var(--accent-dim); outline: none; }
+.dp-caret { color: var(--muted); }
+.dp-panel {
+  margin-top: 8px; padding: 8px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.dp-panel[hidden] { display: none; }
+.dp-head { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-bottom: 6px; }
+.dp-nav, .dp-quick, .dp-title { background: none; border: 0; padding: 0; font-size: 12.5px; color: var(--muted); }
+.dp-nav:hover, .dp-nav:focus-visible, .dp-quick:hover, .dp-quick:focus-visible { color: var(--accent); outline: none; }
+.dp-nav { min-width: 44px; min-height: 36px; white-space: nowrap; }
+.dp-nav:disabled, .dp-quick:disabled { opacity: .35; pointer-events: none; }
+.dp-title { flex: 1 1 auto; text-align: center; color: var(--headers); font-weight: 600; font-size: 13px; min-height: 36px; }
+button.dp-title:hover, button.dp-title:focus-visible { color: var(--accent); outline: none; }
+.dp-year { display: flex; align-items: center; justify-content: center; color: var(--text); }
+.dp-row { display: grid; grid-template-columns: repeat(7, 1fr); }
+.dp-wd-c { text-align: center; color: var(--muted); font-size: 11.5px; padding: 4px 0; }
+.dp-day, .dp-empty {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  height: 44px; margin: 1px; padding: 0; background: none; border: 1px solid transparent; border-radius: 6px;
+  color: var(--text); font-size: 13px;
+}
+.dp-day.dp-we { color: var(--muted); }
+.dp-day:hover, .dp-day:focus-visible { background: var(--panel-2); outline: none; }
+.dp-day:focus-visible { border-color: var(--accent-dim); }
+.dp-day.dp-today { border-color: var(--accent); }
+.dp-day.dp-sel, .dp-day.dp-sel:hover { background: var(--accent); color: var(--on-accent); }
+.dp-day.dp-off { opacity: .35; pointer-events: none; }
+.dp-num { line-height: 1; }
+.dp-dot { width: 5px; height: 5px; border-radius: 50%; background: transparent; }
+.dp-dot.dp-l1 { background: color-mix(in srgb, var(--accent) 35%, var(--bg)); }
+.dp-dot.dp-l2 { background: color-mix(in srgb, var(--accent) 55%, var(--bg)); }
+.dp-dot.dp-l3 { background: color-mix(in srgb, var(--accent) 80%, var(--bg)); }
+.dp-dot.dp-l4 { background: var(--accent); }
+.dp-day.dp-sel .dp-dot.dp-l1, .dp-day.dp-sel .dp-dot.dp-l2, .dp-day.dp-sel .dp-dot.dp-l3, .dp-day.dp-sel .dp-dot.dp-l4 { background: var(--on-accent); }
+.dp-months { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.dp-month { height: 44px; background: none; border: 1px solid transparent; border-radius: 6px; color: var(--text); font-size: 13px; }
+.dp-month:hover, .dp-month:focus-visible { background: var(--panel-2); outline: none; }
+.dp-month.dp-sel { background: var(--accent); color: var(--on-accent); }
+.dp-month.dp-off { opacity: .35; pointer-events: none; }
+.dp-foot { display: flex; align-items: center; gap: 16px; margin-top: 6px; }
+.dp-quick { min-height: 36px; }
+.dp-x { margin-left: auto; min-width: 36px; }
 
 /* ---------- Мобильные элементы (на десктопе скрыты) ---------- */
 .quick-actions, .tabbar, .search-toggle, .sheet-close, .date-row, .trash-back, .screen { display: none; }
@@ -363,6 +415,10 @@ dialog .btn { width: 100%; margin-top: 16px; }
 .receipt-diff-btns .bracket { color: var(--text); }
 #amount:read-only { color: var(--text); }
 
+@media (min-width: 900px) {
+  .side { max-height: calc(100vh - var(--topbar-h) - env(safe-area-inset-top) - 40px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+}
+
 @media (max-width: 899px) {
   .layout {
     grid-template-columns: minmax(0, 1fr) 320px;
@@ -376,6 +432,13 @@ dialog .btn { width: 100%; margin-top: 16px; }
   .qv { width: auto; padding: 3px 8px; }
   .qv .ico { display: none; }
   .nav-data { margin-left: auto; }
+}
+
+@media (min-width: 600px) {
+  .dp-day, .dp-empty { height: 36px; }
+  .dp-month { height: 36px; }
+  .dp-nav, .dp-title { min-height: 32px; }
+  .dp-quick { min-height: 28px; }
 }
 
 /* ---------- Телефон: вкладки, шторка ---------- */
@@ -488,9 +551,10 @@ dialog .btn { width: 100%; margin-top: 16px; }
   .type-switch button { min-height: 44px; }
   .amount-field input { font-size: 28px; font-weight: 500; padding: 8px 36px 8px 12px; min-height: 56px; }
   .amount-field span { font-size: 18px; right: 14px; }
-  #entry-box input[type="text"], #entry-box input[type="date"], #entry-box select,
-  .sheet-form input[type="text"], .sheet-form input[type="date"], .sheet-form select { font-size: 16px; min-height: 44px; }
-  #entry-box input[type="date"], .sheet-form input[type="date"] { width: 100%; min-width: 0; }
+  #entry-box input[type="text"], #entry-box select,
+  .sheet-form input[type="text"], .sheet-form select { font-size: 16px; min-height: 44px; }
+  .dp-trigger { font-size: 16px; min-height: 44px; }
+  .dp-nav, .dp-quick, .dp-title { min-height: 44px; }
   .sheet-form .btn { min-height: 52px; font-size: 14px; }
   .date-row { display: flex; align-items: center; gap: 6px; margin-top: 14px; flex-wrap: wrap; }
   .date-row .bracket { padding: 13px 6px; margin: -13px 0; }
