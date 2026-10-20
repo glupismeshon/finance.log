@@ -1,6 +1,6 @@
 "use strict";
 (() => {
-  const {money: M, schema, journal, views, accounts: acct, categories: cats, suggest, i18n: I, boot} = globalThis.MoneyCore;
+  const {money: M, schema, journal, views, accounts: acct, categories: cats, suggest, analytics: A, i18n: I, boot} = globalThis.MoneyCore;
   const t = I.t, tp = I.tp;
   const newId = () => {
     if (crypto.randomUUID) return crypto.randomUUID();
@@ -14,6 +14,7 @@
   let undoId = null, tab = "journal", currentAccount = null, showArchived = false, accountEditing = null, reconAccount = null, activeSheet = null;
   let selCat = null, catTouched = false, accTouched = false, catFilter = "all", catKind = "expense", showCatArchived = false, categoryEditing = null;
   let receipt = {open: false, manual: false, rows: []};
+  let dayFilter = null, anFresh = true;
   let settings = boot.get();
   I.setLang(I.resolve(settings.lang));
   const mobileQuery = window.matchMedia("(max-width: 599px)");
@@ -282,14 +283,14 @@
   function renderEntries() {
     const query = $("search").value.trim().toLocaleLowerCase(I.locale());
     const accFilter = effectiveAccount(), onAcc = accFilter !== "all";
-    const entries = state.operations.filter(e => e.deleted === trash && (filter === "all" || e.type === filter) && (!onAcc || e.legs.some(l => l.accountId === accFilter)) && catMatch(e) &&
+    const entries = state.operations.filter(e => e.deleted === trash && (filter === "all" || e.type === filter) && (!onAcc || e.legs.some(l => l.accountId === accFilter)) && catMatch(e) && (!dayFilter || e.date === dayFilter) &&
       (!query || `${I.stored(e.note)} ${e.merchant || ""} ${opCat(e) ? catPath(opCat(e)) : ""} ${amountInput(amountOf(e))} ${(e.items || []).map(i => i.name).join(" ")} ${e.legs.map(l => accName(l.accountId)).join(" ")}`.toLocaleLowerCase(I.locale()).includes(query)))
       .sort((a,b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
     $("entry-count").textContent = tp("journal.count", entries.length);
     const container = $("entries"); container.replaceChildren();
     if (!entries.length) {
       const empty = node("div","empty-state");
-      const filtered = query || filter !== "all" || catFilter !== "all";
+      const filtered = query || filter !== "all" || catFilter !== "all" || dayFilter;
       const line = (tag, cls, text) => { const p = node("div"); p.append(node("span",`tag ${cls}`,tag),document.createTextNode(text)); return p; };
       empty.append(node("div","prompt","money.log"));
       if (filtered) {
@@ -440,10 +441,11 @@
     setNav($("trash-nav"), tab === "journal" && trash);
     setNav($("settings-nav"), tab === "settings");
     setNav($("categories-nav"), tab === "categories");
+    setNav($("analytics-nav"), tab === "analytics");
     setNav($("accounts-nav"), tab === "accounts" && !currentAccount);
     document.querySelectorAll("#nav-accounts .qv").forEach(el => setNav(el, tab === "accounts" && el.dataset.id === currentAccount));
     $("journal-title").textContent = t(trash ? "nav.trash" : "nav.journal");
-    $("page-label").textContent = trash ? t("nav.trash") : tab === "accounts" ? (currentAccount ? accName(currentAccount) : t("page.accounts")) : t({journal: "nav.journal", plans: "page.plans", more: "page.more", settings: "nav.settings", categories: "nav.categories"}[tab]);
+    $("page-label").textContent = trash ? t("nav.trash") : tab === "accounts" ? (currentAccount ? accName(currentAccount) : t("page.accounts")) : t({journal: "nav.journal", analytics: "page.analytics", plans: "page.plans", more: "page.more", settings: "nav.settings", categories: "nav.categories"}[tab]);
     const active = trash || tab === "settings" || tab === "categories" ? "more" : tab;
     document.querySelectorAll(".tab").forEach(b=>{
       const on = b.dataset.tab === active;
@@ -465,11 +467,14 @@
     renderCategories();
     setMode(mode, "keep");
     syncChrome();
+    renderDayBar();
     renderEntries();
+    if (tab === "analytics") renderAnalytics();
   }
   function showScreen(name, accountId = null, isTrash = false) {
     if (activeSheet) dismissAny();
     tab = name; currentAccount = accountId; trash = isTrash;
+    if (name === "analytics") anFresh = true;
     render();
     window.scrollTo(0,0);
   }
@@ -670,18 +675,18 @@
     } else $("receipt-diff").hidden = true;
     $("save-button").disabled = on && diff !== null && diff !== 0;
   }
-  function defaultCatLabel() { const c = selCat && catById(selCat); return c ? catPath(c) : t("form.categoryNone"); }
+  function defaultCatLabel() { const c = selCat && catById(selCat); return c ? catName(c) : t("form.categoryNone"); }
   function refreshRowCats() {
     document.querySelectorAll("#receipt-rows .ri-cat option[value='']").forEach(o => { o.textContent = defaultCatLabel(); });
   }
   function fillRowCat(select, r) {
     const opts = [["", defaultCatLabel()]];
     for (const {cat, children} of cats.tree(state, "expense")) {
-      opts.push([cat.id, catPath(cat)]);
-      children.forEach(k => opts.push([k.id, catPath(k)]));
+      opts.push([cat.id, catName(cat)]);
+      children.forEach(k => opts.push([k.id, catName(k)]));
     }
     const cur = r.catId && catById(r.catId);
-    if (cur && !opts.some(o => o[0] === cur.id)) opts.push([cur.id, catPath(cur)]);
+    if (cur && !opts.some(o => o[0] === cur.id)) opts.push([cur.id, catName(cur)]);
     select.replaceChildren(...opts.map(([v, label]) => { const o = document.createElement("option"); o.value = v; o.textContent = label; return o; }));
     select.value = cur ? cur.id : "";
   }
@@ -1039,6 +1044,239 @@
       $(`themes-${group}`).replaceChildren(...boot.themes().filter(x => x.dark === (group === "dark")).map(x => themeRow(x,group)));
     }
   }
+
+  // ---------- фильтр журнала по дню ----------
+  function renderDayBar() {
+    $("day-bar").hidden = !dayFilter;
+    if (dayFilter) $("day-bar-text").textContent = t("filter.dayBar", {day: anDay(dayFilter)});
+  }
+  function showDay(day, type) {
+    dayFilter = day; catFilter = "all"; $("search").value = ""; $("account-filter").value = "all";
+    const f = document.querySelector(`.filter[data-filter="${type}"]`); if (f) f.click();
+    showScreen("journal");
+  }
+  $("day-bar-clear").addEventListener("click", () => { dayFilter = null; renderDayBar(); renderEntries(); });
+
+  // ---------- вкладка «анализ» ----------
+  const an = {span: "month", offset: 0, heat: "expense", items: "cents", open: new Set(), day: null};
+  const SPAN_N = {month: 1, "3m": 3, year: 12};
+  const iso8 = d => d.toISOString().slice(0, 10);
+  const utcDate = d => new Date(d + "T00:00:00Z");
+  const addDays = (d, n) => iso8(new Date(utcDate(d).getTime() + n * 864e5));
+  const lowerEn = text => I.getLang() === "en" ? text.toLowerCase() : text;
+  const dtf = (opts, d) => new Intl.DateTimeFormat(I.locale(), {timeZone: "UTC", ...opts}).format(utcDate(d));
+  const monthShort = d => lowerEn(dtf({month: "short"}, d)).replace(/\./g, "");
+  // «20 окт» (с годом, если он не текущий)
+  function anDay(d) {
+    const base = `${utcDate(d).getUTCDate()} ${monthShort(d)}`;
+    return d.slice(0, 4) === today().slice(0, 4) ? base : `${base} ${d.slice(0, 4)}`;
+  }
+  const monthYear = d => lowerEn(dtf({month: "long", year: "numeric"}, d)).replace(/\s?г\.$/, "");
+  const numPlain = c => money(c).replace(/\s₽$/, "").replace(/[,.]00$/, "");
+  function anRange() {
+    const [y, m] = today().slice(0, 7).split("-").map(Number), n = SPAN_N[an.span];
+    const last = m - 1 + an.offset * n;
+    const from = iso8(new Date(Date.UTC(y, last - n + 1, 1))), end = iso8(new Date(Date.UTC(y, last + 1, 0)));
+    return {from, end, to: end > today() ? today() : end};
+  }
+  function deltaEl(d, goodUp) {
+    const el = node("span", "an-delta");
+    if (d === null || d === undefined) return el;
+    const up = d > 0, good = d === 0 ? null : up === goodUp;
+    el.textContent = `${d === 0 ? "=" : up ? "▲" : "▼"} ${Math.abs(d).toLocaleString(I.locale(), {maximumFractionDigits: 1})}%`;
+    if (good !== null) el.classList.add(good ? "good" : "bad");
+    return el;
+  }
+  function renderAnSummary(sum) {
+    const defs = [["expense", false, money], ["income", true, money], ["net", true, signed], ["avgPerDay", false, money], ["avgCheck", false, money]];
+    $("an-summary").replaceChildren(...defs.map(([k, goodUp, fmt]) => {
+      const el = node("div", "an-stat");
+      el.append(node("span", "an-stat-l", t("an.sum." + k)), node("strong", "an-stat-v", fmt(sum[k])), deltaEl(sum.delta[k], goodUp));
+      return el;
+    }));
+  }
+  // ----- тепловая карта -----
+  const HM = {c: 11, g: 3, top: 16, weeks: 53};
+  function heatData() {
+    const end = today(), dow = (utcDate(end).getUTCDay() + 6) % 7;
+    const start = addDays(end, -dow - (HM.weeks - 1) * 7);
+    const vals = A.daily(state, {from: start, to: end, type: an.heat});
+    const counts = {};
+    for (const o of state.operations) if (!o.deleted && o.type === an.heat && o.date >= start && o.date <= end) counts[o.date] = (counts[o.date] || 0) + 1;
+    return {start, end, vals, counts};
+  }
+  function renderAnHeat() {
+    const {start, end, vals} = heatData(), th = A.heatLevels(vals), P = HM.c + HM.g;
+    const w = HM.weeks * P - HM.g, h = HM.top + 7 * P - HM.g;
+    let out = `<svg class="hm-svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${t("an.heatAria")}">`, lastLabel = -9;
+    for (let c = 0; c < HM.weeks; c++) {
+      const mon = addDays(start, c * 7);
+      let label = null;
+      for (let i = 0; i < 7; i++) { const d = addDays(mon, i); if (d.endsWith("-01")) label = d; }
+      if (!label && c === 0 && Number(mon.slice(8)) <= 20) label = mon;
+      if (label && c - lastLabel >= 3) { out += `<text class="hm-m" x="${c * P}" y="10">${monthShort(label)}</text>`; lastLabel = c; }
+      for (let i = 0; i < 7; i++) {
+        const d = addDays(mon, i); if (d > end) break;
+        out += `<rect class="hm-c hm-l${A.levelOf(vals[d] || 0, th)}${d === an.day ? " sel" : ""}" data-d="${d}" x="${c * P}" y="${HM.top + i * P}" width="${HM.c}" height="${HM.c}" rx="2"/>`;
+      }
+    }
+    $("an-heat").innerHTML = out + "</svg>";
+    const names = [];
+    for (let i = 0; i < 7; i++) names.push(`<div>${i % 2 === 0 && i < 5 ? lowerEn(dtf({weekday: "short"}, addDays("2024-01-01", i))).replace(/\./g, "") : ""}</div>`);
+    $("an-heat-days").innerHTML = names.join("");
+    // подпись под картой
+    const first = state.operations.filter(o => !o.deleted && o.type === an.heat).reduce((m, o) => o.date < m ? o.date : m, end);
+    const from = first > start ? first : start;
+    let none = 0, best = null;
+    for (let d = from; d <= end; d = addDays(d, 1)) if (!vals[d]) none++;
+    for (const [d, v] of Object.entries(vals)) if (!best || v > best[1] || (v === best[1] && d > best[0])) best = [d, v];
+    $("an-heat-stats").textContent = t("an.heatStats", {noneLabel: t("an.none." + an.heat), n: none, maxLabel: t("an.max." + an.heat)}) + (best ? ` ${anDay(best[0])}, ${money(best[1])}` : " —");
+    renderAnTip();
+    if (anFresh) { const sc = $("an-heat-scroll"); sc.scrollLeft = sc.scrollWidth; }
+  }
+  function renderAnTip() {
+    const d = an.day, tip = $("an-tip-text"), btn = $("an-tip-show");
+    if (!d) { tip.textContent = t("an.tipHint"); btn.hidden = true; return; }
+    const {vals, counts} = heatData(), n = counts[d] || 0;
+    tip.textContent = t("an.tip", {day: anDay(d), sum: money(vals[d] || 0), ops: n ? tp("journal.count", n) : t("an.noOps")});
+    btn.hidden = !n;
+  }
+  $("an-heat").addEventListener("click", ev => {
+    const r = ev.target.closest("rect[data-d]"); if (!r) return;
+    an.day = r.dataset.d;
+    document.querySelectorAll("#an-heat rect.sel").forEach(x => x.classList.remove("sel"));
+    r.classList.add("sel");
+    renderAnTip();
+  });
+  $("an-tip-show").addEventListener("click", () => { if (an.day) showDay(an.day, an.heat); });
+  // ----- полосы -----
+  const barSvg = (pct, cls = "") => `<svg class="an-bar ${cls}" width="100%" height="6" aria-hidden="true"><rect class="an-track" width="100%" height="6" rx="3"/><rect class="an-fill" width="${Math.max(0, Math.min(100, pct)).toFixed(2)}%" height="6" rx="3"/></svg>`;
+  const pctText = share => Math.round(share * 100) + "%";
+  function catRowEl(r, child, expandable) {
+    const c = r.id ? catById(r.id) : null;
+    const el = node(expandable ? "button" : "div", `an-row an-cat${child ? " child" : ""}`);
+    if (expandable) { el.type = "button"; el.setAttribute("aria-expanded", String(an.open.has(r.id))); el.dataset.id = r.id; }
+    const name = node("span", "an-name", (child ? "└ " : expandable ? (an.open.has(r.id) ? "▾ " : "▸ ") : "") + (c ? catName(c) : t("cat.none")));
+    const share = node("span", "an-share", pctText(r.share));
+    el.append(name, node("span", "an-val", money(r.cents)), share, r.prevCents || r.cents ? deltaEl(r.delta, false) : node("span", "an-delta"));
+    el.insertAdjacentHTML("beforeend", barSvg(r.share * 100));
+    return el;
+  }
+  function renderAnCats(range) {
+    const rows = A.byCategory(state, {from: range.from, to: range.to, parent: true}), els = [];
+    for (const r of rows) {
+      const kids = r.children || [];
+      els.push(catRowEl(r, false, kids.length > 0));
+      if (kids.length && an.open.has(r.id)) kids.forEach(k => els.push(catRowEl(k, true, false)));
+    }
+    $("an-cats").replaceChildren(...els);
+    $("an-cats-sec").hidden = !rows.length;
+  }
+  $("an-cats").addEventListener("click", ev => {
+    const b = ev.target.closest("button.an-row"); if (!b) return;
+    an.open.has(b.dataset.id) ? an.open.delete(b.dataset.id) : an.open.add(b.dataset.id);
+    renderAnCats(anRange());
+  });
+  function renderAnMerchants(range) {
+    const rows = A.byMerchant(state, {from: range.from, to: range.to, limit: 10});
+    $("an-merchants").replaceChildren(...rows.map(r => {
+      const el = node("div", "an-line");
+      el.append(node("span", "an-name", r.merchant), node("span", "an-val", money(r.cents)),
+        node("span", "an-sub", t("an.merchantSub", {n: r.count, avg: money(r.avgCheck), last: anDay(r.lastDate)})));
+      return el;
+    }));
+    $("an-merchants-sec").hidden = !rows.length;
+  }
+  function renderAnItems(range) {
+    const rows = A.byItem(state, {from: range.from, to: range.to, limit: 10, sort: an.items});
+    $("an-items-sec").hidden = !rows.length;
+    document.querySelectorAll("[data-an-items]").forEach(b => { const on = b.dataset.anItems === an.items; b.classList.toggle("active", on); b.setAttribute("aria-pressed", String(on)); });
+    $("an-items").replaceChildren(...rows.map(r => {
+      const u = unitLabel(priceUnit(r.unit)), same = r.firstUnitPrice === r.lastUnitPrice || r.priceDelta === null;
+      const el = node("div", "an-line"), sub = node("span", "an-sub");
+      sub.append(document.createTextNode(`${r.count}× · ${same ? numPlain(r.lastUnitPrice) : numPlain(r.firstUnitPrice) + "→" + numPlain(r.lastUnitPrice)} ₽/${u}`));
+      if (!same) { sub.append(document.createTextNode(" ")); sub.append(deltaEl(r.priceDelta, false)); }
+      el.append(node("span", "an-name", r.name), node("span", "an-val", money(r.cents)), sub);
+      return el;
+    }));
+  }
+  // ----- по месяцам -----
+  function niceMax(v) {
+    if (v <= 0) return 100;
+    const p = Math.pow(10, Math.floor(Math.log10(v))), f = v / p;
+    return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
+  }
+  const compact = cents => new Intl.NumberFormat(I.locale(), {notation: "compact", maximumFractionDigits: 1}).format(cents / 100);
+  function renderAnMonths(range) {
+    const list = A.monthly(state, {months: 12, to: range.to});
+    const W = Math.max(280, Math.floor($("an-months").clientWidth || 320)), H = 156, top = 14, bot = 20, ph = H - top - bot;
+    const max = niceMax(Math.max(...list.map(r => Math.max(r.expense, r.income)))), col = W / 12, bw = Math.min(18, col * 0.5);
+    const y = v => top + ph - v / max * ph;
+    const from = range.from.slice(0, 7), to = range.to.slice(0, 7), dim = list.some(r => r.month < from || r.month > to);
+    let out = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="group" aria-label="${t("an.monthsAria")}">`;
+    for (const g of [1, 0.5]) out += `<line class="ch-grid" x1="0" x2="${W}" y1="${y(max * g)}" y2="${y(max * g)}"/><text class="ch-t" x="0" y="${y(max * g) - 3}">${compact(max * g)}</text>`;
+    out += `<line class="ch-base" x1="0" x2="${W}" y1="${top + ph}" y2="${top + ph}"/>`;
+    const pts = [];
+    list.forEach((r, i) => {
+      const cx = col * i + col / 2, on = !dim || (r.month >= from && r.month <= to), d = r.month + "-01";
+      const label = `${monthYear(d)}: ${t("an.sum.expense")} ${money(r.expense)}, ${t("an.sum.income")} ${money(r.income)}`;
+      out += `<g class="ch-col${on ? "" : " dim"}" data-m="${r.month}" role="button" tabindex="0" aria-label="${label}"><title>${label}</title><rect class="ch-hit" x="${col * i}" y="0" width="${col}" height="${H}"/>`;
+      if (r.expense > 0) {
+        const bh = Math.max(2, r.expense / max * ph), by = top + ph - bh, rr = Math.min(4, bw / 2, bh);
+        out += `<path class="ch-bar" d="M${cx - bw / 2},${top + ph}V${by + rr}Q${cx - bw / 2},${by} ${cx - bw / 2 + rr},${by}H${cx + bw / 2 - rr}Q${cx + bw / 2},${by} ${cx + bw / 2},${by + rr}V${top + ph}Z"/>`;
+      }
+      out += `<text class="ch-t ch-m" x="${cx}" y="${H - 5}" text-anchor="middle">${monthShort(d).slice(0, 3)}</text></g>`;
+      pts.push([cx, y(r.income), r.income, on]);
+    });
+    out += `<polyline class="ch-line" points="${pts.map(p => p[0] + "," + p[1]).join(" ")}"/>`;
+    for (const p of pts) if (p[2] > 0) out += `<circle class="ch-dot${p[3] ? "" : " dim"}" cx="${p[0]}" cy="${p[1]}" r="3.5"/>`;
+    $("an-months").innerHTML = out + "</svg>";
+    const top1 = list.reduce((b, r) => r.expense > b.expense ? r : b, list[0]);
+    $("an-months-note").textContent = top1.expense ? t("an.monthsMax", {month: monthYear(top1.month + "-01"), sum: money(top1.expense)}) : "";
+  }
+  function pickMonth(ym) {
+    const [y, m] = today().slice(0, 7).split("-").map(Number), [y2, m2] = ym.split("-").map(Number);
+    an.span = "month"; an.offset = (y2 - y) * 12 + (m2 - m); an.day = null;
+    renderAnalytics();
+  }
+  $("an-months").addEventListener("click", ev => { const g = ev.target.closest("[data-m]"); if (g) pickMonth(g.dataset.m); });
+  $("an-months").addEventListener("keydown", ev => { const g = ev.target.closest && ev.target.closest("[data-m]"); if (g && (ev.key === "Enter" || ev.key === " ")) { ev.preventDefault(); pickMonth(g.dataset.m); } });
+  // ----- дни недели -----
+  function renderAnWeekday(range) {
+    const rows = A.weekday(state, {from: range.from, to: range.to}), max = Math.max(...rows.map(r => r.avgCents), 1);
+    $("an-weekdays").replaceChildren(...rows.map(r => {
+      const el = node("div", "an-row an-wd");
+      el.append(node("span", "an-name", lowerEn(dtf({weekday: "short"}, addDays("2024-01-01", r.weekday))).replace(/\./g, "")), node("span", "an-val", money(r.avgCents)));
+      el.insertAdjacentHTML("beforeend", barSvg(r.avgCents / max * 100));
+      return el;
+    }));
+  }
+  function renderAnalytics() {
+    const range = anRange(), sum = A.summary(state, {from: range.from, to: range.to});
+    document.querySelectorAll("[data-an-span]").forEach(b => { const on = b.dataset.anSpan === an.span; b.classList.toggle("active", on); b.setAttribute("aria-pressed", String(on)); });
+    $("an-next").disabled = an.offset >= 0;
+    $("an-prev").disabled = an.offset <= -120;
+    document.querySelectorAll("[data-an-heat]").forEach(b => { const on = b.dataset.anHeat === an.heat; b.classList.toggle("active", on); b.setAttribute("aria-pressed", String(on)); });
+    const span = (f, e) => `${anDay(f)}–${anDay(e)}`;
+    $("an-vs").textContent = t("an.vs", {cur: span(range.from, range.to), prev: span(sum.prev.from, sum.prev.to)});
+    renderAnSummary(sum);
+    const empty = !sum.ops && !sum.income;
+    $("an-empty").hidden = !empty;
+    renderAnHeat();
+    renderAnCats(range); renderAnMerchants(range); renderAnItems(range); renderAnWeekday(range);
+    $("an-weekdays-sec").hidden = empty;
+    renderAnMonths(range);
+    anFresh = false;
+  }
+  document.querySelectorAll("[data-an-span]").forEach(b => b.addEventListener("click", () => { an.span = b.dataset.anSpan; an.offset = 0; renderAnalytics(); }));
+  $("an-prev").addEventListener("click", () => { an.offset--; renderAnalytics(); });
+  $("an-next").addEventListener("click", () => { if (an.offset < 0) { an.offset++; renderAnalytics(); } });
+  document.querySelectorAll("[data-an-heat]").forEach(b => b.addEventListener("click", () => { an.heat = b.dataset.anHeat; renderAnalytics(); }));
+  document.querySelectorAll("[data-an-items]").forEach(b => b.addEventListener("click", () => { an.items = b.dataset.anItems; renderAnItems(anRange()); }));
+  $("analytics-nav").addEventListener("click", () => setTab("analytics"));
+  let anResize = null;
+  window.addEventListener("resize", () => { if (tab !== "analytics") return; clearTimeout(anResize); anResize = setTimeout(() => renderAnMonths(anRange()), 120); });
+
   function applyLanguage() {
     I.setLang(I.resolve(settings.lang));
     I.applyI18n();
