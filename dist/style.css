@@ -134,6 +134,8 @@ input[type="search"]::-webkit-search-cancel-button { filter: grayscale(1); }
 .nav-group + .nav-group { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-dim); }
 .nsec { display: flex; justify-content: space-between; align-items: baseline; color: var(--muted); font-size: 12.5px; padding: 0 7px 4px 4px; }
 .nsec .bracket { color: var(--accent); }
+.nav-kind { padding: 7px 7px 1px 4px; color: var(--muted); font-size: 12px; }
+.nav-kind:first-child { padding-top: 1px; }
 .qv-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .qv-count { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .qv {
@@ -449,7 +451,7 @@ dialog .btn { width: 100%; margin-top: 16px; }
   .nav { border-right: 0; padding: 0 0 8px; min-height: 0; border-bottom: 1px dashed var(--border-dim); display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
   .nav-group { display: flex; flex-wrap: wrap; gap: 2px 6px; align-items: center; }
   .nav-group + .nav-group { margin: 0; padding: 0; border-top: 0; }
-  .nsec, .nav-note { display: none; }
+  .nsec, .nav-note, .nav-kind { display: none; }
   .qv { width: auto; padding: 3px 8px; }
   .qv .ico { display: none; }
   .nav-data { margin-left: auto; }
@@ -793,6 +795,9 @@ body:not([data-tab="journal"]) #plan-banner, body[data-trash] #plan-banner { dis
 .pl-chart { margin-top: 10px; min-height: 176px; }
 .pl-chart svg { cursor: crosshair; max-width: 100%; }
 .pl-tip { min-height: 22px; }
+.pl-view-toggle { display: block; min-height: 44px; margin-top: 2px; padding: 0; border: 0; background: none; color: var(--muted); font-size: 12.5px; text-align: left; }
+.pl-view-toggle:hover, .pl-view-toggle:focus-visible { color: var(--accent); }
+.pl-view-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .pl-zero { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 3; }
 svg .pl-ln { fill: none; stroke: var(--accent); stroke-width: 1.75; stroke-linejoin: round; }
 svg .pl-ln.neg { stroke: var(--over); }

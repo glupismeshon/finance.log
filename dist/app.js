@@ -443,12 +443,22 @@
     $("archived-list").replaceChildren(...archived.map(r => accountRow(r, true)));
     $("accounts-count").textContent = rows.length;
     $("nav-accounts-count").textContent = rows.length;
-    $("nav-accounts").replaceChildren(...rows.map(r => {
+    const navGroups = [["credit_card","nav.kindCreditCard"],["loan","nav.kindLoans"],["debit","nav.kindDebit"],["cash","nav.kindCash"],["savings","nav.kindSavings"],["person","nav.kindPeople"]];
+    const navNodes = [];
+    const appendNavAccount = r => {
       const b = node("button","qv"); b.type = "button"; b.dataset.id = r.account.id;
       b.append(node("span","qv-name",I.stored(r.account.name)),node("span","qv-count",I.fmtMoney(r.balanceCents,false)));
       b.addEventListener("click",()=>openAccount(r.account.id));
-      return b;
-    }));
+      navNodes.push(b);
+    };
+    for (const [kind,key] of navGroups) {
+      const part = rows.filter(r => r.account.kind === kind);
+      if (!part.length) continue;
+      navNodes.push(node("div","nav-kind","--"+t(key)));
+      part.forEach(appendNavAccount);
+    }
+    rows.filter(r => !navGroups.some(([kind]) => kind === r.account.kind)).forEach(appendNavAccount);
+    $("nav-accounts").replaceChildren(...navNodes);
     const a = currentAccount && accById(currentAccount);
     if (a) {
       $("account-label").textContent = I.stored(a.name);
@@ -490,13 +500,15 @@
   const BALANCE_VIEWS = ["all", "ownOnly", "loansOnly"];
   const balViewKey = () => BALANCE_VIEWS.includes(settings.balanceView) ? settings.balanceView : "all";
   const balViewLabel = view => ({all: "balance.vAll", ownOnly: "balance.vOwn", loansOnly: "balance.vLoans"}[view]);
+  let observedBalanceView = balViewKey(), forecastView = observedBalanceView;
+  const nextBalanceView = view => BALANCE_VIEWS[(BALANCE_VIEWS.indexOf(view) + 1) % BALANCE_VIEWS.length];
   function renderAccountsTotal() {
     const bd = views.breakdown(state), view = balViewKey();
-    $("accounts-total").textContent = t("acc.totalView", {view: t(balViewLabel(view)).replace(/^\[|\]$/g, ""), sum: money(bd.views[view])});
+    $("accounts-total").textContent = t("acc.totalView", {view: t(balViewLabel(view)).replace(/^--/, ""), sum: money(bd.views[view])});
   }
   function renderBalance() {
     const bd = views.breakdown(state), view = balViewKey();
-    const next = BALANCE_VIEWS[(BALANCE_VIEWS.indexOf(view) + 1) % BALANCE_VIEWS.length];
+    const next = nextBalanceView(view);
     $("balance-view").textContent = t(balViewLabel(view));
     $("balance-toggle").setAttribute("aria-label", t("balance.switchView", {current: t(balViewLabel(view)), next: t(balViewLabel(next))}));
     $("balance-toggle").setAttribute("aria-expanded", String(view !== "all"));
@@ -512,8 +524,11 @@
     }));
   }
   $("balance-toggle").addEventListener("click",()=>{
-    const next = BALANCE_VIEWS[(BALANCE_VIEWS.indexOf(balViewKey()) + 1) % BALANCE_VIEWS.length];
-    persistNotice(boot.set({balanceView: next})); settings = boot.get(); renderBalance(); renderAccountsTotal();
+    const next = nextBalanceView(balViewKey());
+    persistNotice(boot.set({balanceView: next})); settings = boot.get();
+    observedBalanceView = next;
+    forecastView = next;
+    renderBalance(); renderAccountsTotal(); renderPlanForecast();
   });
   function render() {
     const sums = views.totals(state);
@@ -2077,9 +2092,10 @@
     $("pl-soon").replaceChildren(...(rows.length ? rows : [node("div", "muted pl-line", t("plans.soonEmpty"))]));
   }
   function renderPlanForecast() {
-    const td = today(), view = balViewKey();
+    const td = today(), view = forecastView;
     const active = state.schedules.some(s => !s.archived && !s.paused);
-    $("pl-fc-view").textContent = t("plans.fc.view", {view: t(balViewLabel(view)).replace(/^\[|\]$/g, "")});
+    $("pl-fc-view").textContent = t("plans.fc.view", {view: t(balViewLabel(view))});
+    $("pl-fc-view").setAttribute("aria-label", t("plans.fc.switchView", {current: t(balViewLabel(view)), next: t(balViewLabel(nextBalanceView(view)))}));
     $("pl-fc-deficit").hidden = true;
     $("pl-chart").replaceChildren(); plFc = null;
     if (!active) { $("pl-fc-line").textContent = t("plans.fc.empty"); $("pl-fc-tip").textContent = ""; return; }
@@ -2112,7 +2128,7 @@
     if (hi === lo) hi = lo + 100;
     const pad = (hi - lo) * 0.08; hi += pad; if (lo < 0) lo -= pad;
     const y = v => top + (hi - v) / (hi - lo) * ph, x = i => 1 + i / (n - 1) * (W - 2);
-    const start = views.breakdown(state).views[balViewKey()];
+    const start = views.breakdown(state).views[forecastView];
     const segs = [];
     let cur = null;
     for (let i = 0; i < n; i++) {
@@ -2155,6 +2171,7 @@
     plSel = Math.max(0, Math.min(plFc.points.length - 1, Math.round((ev.clientX - r.left) / r.width * (plFc.points.length - 1))));
     renderPlanChart();
   });
+  $("pl-fc-view").addEventListener("click", () => { forecastView = nextBalanceView(forecastView); renderPlanForecast(); });
   function planListRow(sc, extra) {
     const row = node("button", "pl-reg"); row.type = "button";
     row.append(node("span", `mark ${sc.type}`, planMark(sc.type)), node("span", "pl-title", sc.name), node("span", `pl-amt ${sc.type}`, extra.amount));
@@ -2452,6 +2469,10 @@
   window.addEventListener("storage",event=>{
     if(event.key!==boot.KEY)return;
     settings=boot.get();
+    if (balViewKey() !== observedBalanceView) {
+      observedBalanceView = balViewKey();
+      forecastView = balViewKey(); renderBalance(); renderAccountsTotal(); renderPlanForecast();
+    }
     if(I.resolve(settings.lang)!==I.getLang())applyLanguage();else { renderSettings(); syncPrivacy(); applyHints(); applyAnim(); }
   });
   handleAuthReturn();
