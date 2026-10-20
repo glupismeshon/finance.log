@@ -475,6 +475,16 @@
     select.hidden = state.accounts.length <= 1;
   }
   const setNav = (el, on) => { el.classList.toggle("active",on); el.setAttribute("aria-current",on ? "page" : "false"); };
+  const ACCOUNT_PATH_KIND = {credit_card: "credit-card", loan: "loans", debit: "debit", cash: "cash", savings: "savings", person: "people"};
+  function currentPath() {
+    if (tab === "accounts") {
+      if (!currentAccount) return "accounts";
+      const account = accById(currentAccount);
+      return account ? `accounts/${ACCOUNT_PATH_KIND[account.kind] || account.kind}/${accName(currentAccount).replaceAll("/", "∕")}` : "accounts";
+    }
+    if (tab === "journal" && trash) return "sections/deleted";
+    return "sections/" + ({journal: "journal", analytics: "analysis", plans: "plans", categories: "categories", settings: "settings", more: "more"}[tab] || "journal");
+  }
   function syncChrome() {
     if (currentAccount && !accById(currentAccount)) currentAccount = null;
     document.body.dataset.tab = tab;
@@ -489,7 +499,8 @@
     setNav($("accounts-nav"), tab === "accounts" && !currentAccount);
     document.querySelectorAll("#nav-accounts .qv").forEach(el => setNav(el, tab === "accounts" && el.dataset.id === currentAccount));
     $("journal-title").textContent = t(trash ? "nav.trash" : "nav.journal");
-    $("page-label").textContent = trash ? t("nav.trash") : tab === "accounts" ? (currentAccount ? accName(currentAccount) : t("page.accounts")) : t({journal: "nav.journal", analytics: "page.analytics", plans: "page.plans", more: "page.more", settings: "nav.settings", categories: "nav.categories"}[tab]);
+    $("page-label").textContent = currentPath();
+    $("page-label").parentElement.title = "~/" + currentPath();
     const active = trash || tab === "settings" || tab === "categories" ? "more" : tab;
     document.querySelectorAll(".tab").forEach(b=>{
       const on = b.dataset.tab === active;

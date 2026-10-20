@@ -54,7 +54,7 @@ svg.ico { flex: none; color: var(--muted); }
 .cursor { color: var(--accent); margin-left: -4px; animation: blink 1.1s steps(1) infinite; }
 .cursor.solid { animation: none; }
 @keyframes blink { 50% { opacity: 0; } }
-.crumb { white-space: nowrap; flex: 0 0 auto; }
+.crumb { white-space: nowrap; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .topbar-right { margin-left: auto; flex: 0 0 auto; display: flex; align-items: center; gap: 16px; }
 .topbar-right time { white-space: nowrap; }
 
@@ -466,9 +466,10 @@ dialog .btn { width: 100%; margin-top: 16px; }
 
 /* ---------- Телефон: вкладки, шторка ---------- */
 @media (max-width: 599px) {
-  :root { --topbar-h: 44px; --tabbar-h: 56px; }
-  .topbar { padding-left: max(16px, env(safe-area-inset-left)); gap: 12px; }
-  .topbar-right time, .crumb { display: none; }
+  :root { --topbar-h: 68px; --tabbar-h: 56px; }
+  .topbar { padding-left: max(16px, env(safe-area-inset-left)); padding-bottom: 24px; gap: 12px; }
+  .topbar-right time { display: none; }
+  .crumb { position: absolute; left: 16px; right: 16px; bottom: 3px; display: block; font-size: 11px; line-height: 18px; }
   .topbar .bracket { min-height: 44px; padding: 0 4px; }
 
   .nav { display: none; }
