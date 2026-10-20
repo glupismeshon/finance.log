@@ -1091,6 +1091,9 @@
     const dark = boot.resolve().dark;
     $("theme-button").textContent = t(dark ? "theme.toLight" : "theme.toDark");
     $("theme-button").setAttribute("aria-label", t(dark ? "theme.toLightAria" : "theme.toDarkAria"));
+    const other = I.getLang() === "ru" ? "en" : "ru";
+    $("lang-button").textContent = `[${other}]`;
+    $("lang-button").setAttribute("aria-label", other === "en" ? "Switch to English" : "Переключить на русский");
   }
   // ---------- приватность ----------
   function applyPrivacy() {
@@ -2414,6 +2417,10 @@
   [$("balance"), $("account-balance")].forEach(el => {
     let last = 0;
     el.addEventListener("click", () => { const now = Date.now(); if (now - last < 400) { last = 0; togglePrivacy(); } else last = now; });
+  });
+  $("lang-button").addEventListener("click",()=>{
+    persistNotice(boot.set({lang: I.getLang() === "ru" ? "en" : "ru"}));
+    settings = boot.get(); applyLanguage();
   });
   $("theme-button").addEventListener("click",()=>persistNotice(boot.set({themeMode: boot.resolve().dark ? "light" : "dark"})));
   $("settings-nav").addEventListener("click",()=>setTab("settings"));

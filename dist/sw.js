@@ -1,5 +1,5 @@
 "use strict";
-const CACHE = "finance-log-v28";
+const CACHE = "finance-log-v29";
 const ASSETS = [
   "./",
   "index.html",
@@ -18,7 +18,9 @@ const ASSETS = [
   "core/views.js",
   "core/analytics.js",
   "core/sync.js",
+  "core/meters.js",
   "core/schedules.js",
+  "core/loans.js",
   "core/forecast.js",
   "icon.svg",
   "manifest.webmanifest",
