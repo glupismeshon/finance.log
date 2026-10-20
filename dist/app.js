@@ -1,6 +1,12 @@
 "use strict";
 (() => {
   const {money: M, schema, journal, views} = globalThis.MoneyCore;
+  const newId = () => {
+    if (crypto.randomUUID) return crypto.randomUUID();
+    const b = crypto.getRandomValues(new Uint8Array(16)); b[6] = b[6] & 15 | 64; b[8] = b[8] & 63 | 128;
+    const h = [...b].map(x => x.toString(16).padStart(2, "0")).join("");
+    return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
+  };
   const KEY = "money.log.ledger.v2", KEY_V1 = "money.log.ledger.v1";
   const $ = id => document.getElementById(id);
   let state = schema.empty(todayISO()), mode = "expense", filter = "all", trash = false, editing = null, pendingImport = null, locked = false;
@@ -229,7 +235,7 @@
       const previous = editing ? state.operations.find(e=>e.id===editing) : null;
       if (editing && (!previous || previous.deleted)) throw new Error("Запись была удалена. Начните новую запись.");
       const now = new Date().toISOString();
-      const entry = {...previous,id:previous?.id || crypto.randomUUID(),type:mode,date,note:$("note").value.trim(),createdAt:previous?.createdAt || now,deleted:false,
+      const entry = {...previous,id:previous?.id || newId(),type:mode,date,note:$("note").value.trim(),createdAt:previous?.createdAt || now,deleted:false,
         legs:[{accountId:previous?.legs[0].accountId || primary().id,amountCents:mode === "income" ? amountCents : -amountCents}],
         allocations:mode === "income" ? [] : [{categoryId:null,amountCents}]};
       commit(journal.upsertOperation(state,entry,now));
