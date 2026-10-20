@@ -94,7 +94,7 @@
         </button>
         <input id="import-file" type="file" accept=".json,application/json" hidden>
       </div>
-      <p class="nav-note muted" data-i18n-html="nav.note"></p>
+      <p class="nav-note muted hint" data-i18n-html="nav.note"></p>
     </aside>
 
     <main class="journal">
@@ -226,7 +226,7 @@
 
       <section class="box screen" id="screen-plans" aria-labelledby="plans-label">
         <h2 class="box-label" id="plans-label" data-i18n="plans.title"></h2>
-        <div class="box-body"><div class="log-line"><span class="tag warn">[--]</span><span class="log-name" data-i18n="plans.soon"></span></div></div>
+        <div class="box-body"><div class="log-line hint"><span class="tag warn">[--]</span><span class="log-name" data-i18n="plans.soon"></span></div></div>
       </section>
 
       <div class="screen" id="screen-settings">
@@ -245,6 +245,12 @@
           <h2 class="box-label" id="settings-privacy-label" data-i18n="settings.privacy"></h2>
           <div class="box-body">
             <button class="theme-row" id="privacy-on-start" type="button" role="checkbox" aria-checked="false"><span class="theme-check" aria-hidden="true">[✓]</span><span class="theme-name" data-i18n="settings.privacyOnStart"></span></button>
+          </div>
+        </section>
+        <section class="box" aria-labelledby="settings-hints-label">
+          <h2 class="box-label" id="settings-hints-label" data-i18n="settings.hints"></h2>
+          <div class="box-body">
+            <button class="theme-row selected" id="hints-toggle" type="button" role="checkbox" aria-checked="true"><span class="theme-check" aria-hidden="true">[✓]</span><span class="theme-name" data-i18n="settings.hintsOn"></span></button>
           </div>
         </section>
         <section class="box" aria-labelledby="settings-theme-label">
@@ -281,7 +287,7 @@
           <div class="box-body more-list">
             <button class="bracket more-btn" id="more-export" type="button" data-i18n="more.export"></button>
             <button class="bracket more-btn" id="more-import" type="button" data-i18n="more.import"></button>
-            <p class="muted" data-i18n="more.local"></p>
+            <p class="muted hint" data-i18n="more.local"></p>
           </div>
         </section>
         <section class="box" aria-labelledby="trash-label">
@@ -307,7 +313,7 @@
             <div class="log-line"><span class="tag warn">[--]</span><span class="log-name" data-i18n="balance.expense"></span><strong id="expense-total">−0,00 ₽</strong></div>
           </div>
           <div class="muted opening-line"><span data-i18n="balance.accounts"></span> <span id="accounts-count">1</span> <button class="bracket" id="accounts-link" type="button" data-i18n-aria-label="balance.accountsAria" data-i18n="balance.accountsLink"></button></div>
-          <div class="muted opening-line" data-i18n="balance.note"></div>
+          <div class="muted opening-line hint" data-i18n="balance.note"></div>
         </div>
       </section>
 
@@ -323,7 +329,7 @@
             </div>
             <label class="field-label" for="amount" data-i18n="form.amount"></label>
             <div class="amount-field"><input id="amount" type="text" inputmode="decimal" data-i18n-placeholder="amount.ph" autocomplete="off" required maxlength="20"><span aria-hidden="true">₽</span></div>
-            <div class="amount-hint muted" id="amount-hint" hidden></div>
+            <div class="amount-hint muted hint" id="amount-hint" hidden></div>
             <div class="receipt-bar" id="receipt-bar">
               <button type="button" class="bracket" id="receipt-toggle" aria-expanded="false" aria-controls="receipt"></button>
               <span class="muted" id="amount-note" hidden></span>
@@ -347,20 +353,20 @@
               </div>
             </div>
             <div id="merchant-field">
-              <label class="field-label" for="merchant"><span id="merchant-label"></span> <span class="muted" data-i18n="common.optional"></span></label>
+              <label class="field-label" for="merchant"><span id="merchant-label"></span> <span class="muted hint" data-i18n="common.optional"></span></label>
               <input id="merchant" type="text" maxlength="80" autocomplete="off" autocapitalize="sentences" enterkeyhint="next">
               <div class="chips" id="merchant-chips" data-i18n-aria-label="form.merchantChipsAria"></div>
             </div>
             <div id="category-field">
-              <div class="field-label"><span data-i18n="form.category"></span> <span class="muted" data-i18n="common.optional"></span></div>
+              <div class="field-label"><span data-i18n="form.category"></span> <span class="muted hint" data-i18n="common.optional"></span></div>
               <div class="chips" id="category-chips"></div>
               <button type="button" class="bracket chip-all" id="category-all" aria-expanded="false" aria-controls="category-tree" data-i18n="form.categoryAll"></button>
               <div class="cat-tree" id="category-tree" hidden></div>
             </div>
             <div id="account-field"><label class="field-label" for="account" id="account-select-label"></label><select id="account"></select></div>
             <div id="to-field" hidden><label class="field-label" for="account-to" data-i18n="form.to"></label><select id="account-to"></select></div>
-            <div id="fee-field" hidden><label class="field-label" for="fee"><span data-i18n="form.fee"></span> <span class="muted" data-i18n="common.optional"></span></label><div class="amount-field"><input id="fee" type="text" inputmode="decimal" data-i18n-placeholder="amount.ph" autocomplete="off" maxlength="20"><span aria-hidden="true">₽</span></div></div>
-            <label class="field-label" for="note"><span data-i18n="form.note"></span> <span class="muted" data-i18n="common.optional"></span></label>
+            <div id="fee-field" hidden><label class="field-label" for="fee"><span data-i18n="form.fee"></span> <span class="muted hint" data-i18n="common.optional"></span></label><div class="amount-field"><input id="fee" type="text" inputmode="decimal" data-i18n-placeholder="amount.ph" autocomplete="off" maxlength="20"><span aria-hidden="true">₽</span></div></div>
+            <label class="field-label" for="note"><span data-i18n="form.note"></span> <span class="muted hint" data-i18n="common.optional"></span></label>
             <input id="note" type="text" maxlength="160" autocomplete="off">
             <div class="date-row muted" id="date-row"><span data-i18n="form.dateRow"></span> <span id="date-summary"></span> <button class="bracket" id="date-toggle" type="button" data-i18n="common.edit"></button></div>
             <div id="date-field">
@@ -371,7 +377,7 @@
             <button type="submit" class="btn primary" id="save-button"><span></span><span aria-hidden="true">↵</span></button>
             <button type="button" class="btn ghost" id="cancel-edit" hidden data-i18n="form.cancelEdit"></button>
             <button type="button" class="bracket" id="delete-entry" hidden data-i18n="form.delete"></button>
-            <p class="muted form-hint" id="form-hint" data-i18n-html="form.hint"></p>
+            <p class="muted form-hint hint" id="form-hint" data-i18n-html="form.hint"></p>
           </form>
         </div>
       </section>
@@ -436,7 +442,7 @@
         <button type="button" class="bracket sign-btn" data-sign="recon-bank" data-i18n="acform.minus"></button>
         <div class="field-label" id="recon-date-label" data-i18n="recon.date"></div>
         <div class="dp" data-label="recon-date-label"><input id="recon-date" type="hidden"></div>
-        <label class="field-label" for="recon-note"><span data-i18n="recon.note"></span> <span class="muted" data-i18n="common.optional"></span></label>
+        <label class="field-label" for="recon-note"><span data-i18n="recon.note"></span> <span class="muted hint" data-i18n="common.optional"></span></label>
         <input id="recon-note" type="text" maxlength="160" autocomplete="off" data-i18n-placeholder="recon.notePh">
         <div class="muted recon-line" id="recon-calc"></div>
         <div class="recon-diff" id="recon-diff"></div>

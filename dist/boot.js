@@ -2,7 +2,7 @@
   "use strict";
   // Читает настройки и применяет тему до отрисовки (подключается синхронно в <head> после themes.js).
   const KEY = "money.log.settings", OLD_THEME_KEY = "money.log.theme";
-  const DEFAULTS = {lang: "auto", themeMode: "auto", darkTheme: "githubDark", lightTheme: "ayuLight", privacy: false, privacyOnStart: false};
+  const DEFAULTS = {lang: "auto", themeMode: "auto", darkTheme: "githubDark", lightTheme: "ayuLight", privacy: false, privacyOnStart: false, hints: true};
   const themes = (root.MoneyCore && root.MoneyCore.themes) || {THEMES: [], DEFAULT_DARK: "githubDark", DEFAULT_LIGHT: "ayuLight"};
   const find = id => themes.THEMES.find(t => t.id === id);
   const listeners = [];
@@ -17,6 +17,7 @@
     if (["auto", "dark", "light"].includes(raw.themeMode)) s.themeMode = raw.themeMode;
     if (typeof raw.privacy === "boolean") s.privacy = raw.privacy;
     if (typeof raw.privacyOnStart === "boolean") s.privacyOnStart = raw.privacyOnStart;
+    if (typeof raw.hints === "boolean") s.hints = raw.hints;
     const d = find(raw.darkTheme), l = find(raw.lightTheme);
     if (d && d.dark) s.darkTheme = d.id;
     if (l && !l.dark) s.lightTheme = l.id;
@@ -65,6 +66,7 @@
     for (const k in vars) style.setProperty(k, vars[k]);
     style.colorScheme = dark ? "dark" : "light";
     root.document.documentElement.dataset.dark = dark ? "1" : "0";
+    root.document.documentElement.dataset.hints = settings.hints ? "on" : "off";
     const meta = root.document.querySelector('meta[name="theme-color"]');
     if (meta) meta.content = c.bg;
     listeners.forEach(fn => { try { fn({dark, theme}); } catch {} });

@@ -674,6 +674,7 @@
       if (!receipt.manual) $("amount").value = sum > 0 ? amountInput(sum) : "";
       else { try { diff = M.parseAmount($("amount").value) - sum; } catch {} }
       $("amount-note").textContent = t(receipt.manual ? "receipt.manualTotal" : "receipt.fromReceipt");
+      $("amount-note").classList.toggle("hint", !receipt.manual);
       $("amount-mode").textContent = t(receipt.manual ? "receipt.modeAuto" : "receipt.modeManual");
       $("receipt-sum").textContent = t("receipt.sum", {n: receiptCount(), sum: money(sum)});
       const bad = diff !== null && diff !== 0;
@@ -742,7 +743,7 @@
     unit.replaceChildren(...schema.UNITS.map(u => { const o = document.createElement("option"); o.value = u; o.textContent = unitLabel(u); return o; }));
     unit.value = r.unit;
     const bot = node("div", "ri-bot"); bot.append(qty, unit, amt);
-    const hint = node("div", "ri-hint muted"); hint.hidden = true;
+    const hint = node("div", "ri-hint muted hint"); hint.hidden = true;
     const showHint = () => {
       const found = lastItemInfo(r.name);
       hint.hidden = !found;
@@ -1052,6 +1053,15 @@
     applyPrivacy();
     if (changed) render();
   }
+  function applyHints() {
+    const h = $("hints-toggle");
+    h.setAttribute("aria-checked", String(!!settings.hints));
+    h.classList.toggle("selected", !!settings.hints);
+  }
+  function toggleHints() {
+    persistNotice(boot.set({hints: !settings.hints}));
+    settings = boot.get(); applyHints();
+  }
   function togglePrivacy() {
     persistNotice(boot.set({privacy: !settings.privacy}));
     settings = boot.get(); syncPrivacy();
@@ -1177,6 +1187,7 @@
   }
   function renderAnTip() {
     const d = an.day, tip = $("an-tip-text"), btn = $("an-tip-show");
+    tip.classList.toggle("hint", !d);
     if (!d) { tip.textContent = t("an.tipHint"); btn.hidden = true; return; }
     const {vals, counts} = heatData(), n = counts[d] || 0;
     tip.textContent = t("an.tip", {day: anDay(d), sum: money(vals[d] || 0), ops: n ? tp("journal.count", n) : t("an.noOps")});
@@ -1325,6 +1336,7 @@
     updateThemeButton();
     renderSettings();
     applyPrivacy();
+    applyHints();
     render();
     DP.refreshAll();
     if (!$("entry-form").classList.contains("date-open")) updateDateSummary();
@@ -1337,6 +1349,7 @@
   }));
   document.querySelectorAll("[data-set-mode]").forEach(b=>b.addEventListener("click",()=>persistNotice(boot.set({themeMode: b.dataset.setMode}))));
   $("privacy-button").addEventListener("click",togglePrivacy);
+  $("hints-toggle").addEventListener("click",toggleHints);
   $("privacy-on-start").addEventListener("click",()=>{ persistNotice(boot.set({privacyOnStart: !settings.privacyOnStart})); settings = boot.get(); applyPrivacy(); });
   // двойной тап (клик) по большой сумме остатка переключает режим
   [$("balance"), $("account-balance")].forEach(el => {
@@ -1365,7 +1378,7 @@
   window.addEventListener("storage",event=>{
     if(event.key!==boot.KEY)return;
     settings=boot.get();
-    if(I.resolve(settings.lang)!==I.getLang())applyLanguage();else { renderSettings(); syncPrivacy(); }
+    if(I.resolve(settings.lang)!==I.getLang())applyLanguage();else { renderSettings(); syncPrivacy(); applyHints(); }
   });
   applyLanguage();
   resetForm();

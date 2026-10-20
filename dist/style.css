@@ -416,7 +416,7 @@ dialog .btn { width: 100%; margin-top: 16px; }
 #amount:read-only { color: var(--text); }
 
 @media (min-width: 900px) {
-  .side { max-height: calc(100vh - var(--topbar-h) - env(safe-area-inset-top) - 40px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+  .side { max-height: calc(100vh - var(--topbar-h) - env(safe-area-inset-top) - 30px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding-top: 12px; margin-top: -12px; }
 }
 
 @media (max-width: 899px) {
@@ -667,3 +667,4 @@ button.an-row:hover .an-name, button.an-row:focus-visible .an-name { color: var(
 }
 
 .theme-subhead { color: var(--muted); font-size: 12.5px; padding: 14px 0 4px; }
+:root[data-hints="off"] .hint { display: none !important; }
