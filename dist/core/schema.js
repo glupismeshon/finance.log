@@ -138,7 +138,14 @@
       if (m.length > 80) bad();
       if (m) merchant = m;
     }
-    const op = {id: o.id, type: o.type, date: o.date, note: o.note, createdAt: o.createdAt, updatedAt: o.updatedAt, deleted: o.deleted, legs, allocations, links: o.type === "expense" && typeof o.links.feeOf === "string" && ID.test(o.links.feeOf) ? {feeOf: o.links.feeOf} : {}};
+    const links = {};
+    if (o.type === "expense" && typeof o.links.feeOf === "string" && ID.test(o.links.feeOf)) links.feeOf = o.links.feeOf;
+    if (o.type !== "adjustment" && o.links.scheduleId !== undefined) {
+      if (typeof o.links.scheduleId !== "string" || !ID.test(o.links.scheduleId) || !validDate(o.links.dueDate)) bad();
+      links.scheduleId = o.links.scheduleId;
+      links.dueDate = o.links.dueDate;
+    }
+    const op = {id: o.id, type: o.type, date: o.date, note: o.note, createdAt: o.createdAt, updatedAt: o.updatedAt, deleted: o.deleted, legs, allocations, links};
     if (merchant) op.merchant = merchant;
     if (items) op.items = items;
     if (!nested) op.revisions = o.revisions.map(r => {
@@ -146,6 +153,41 @@
       return {at: r.at, before: normOp(r.before, accountIds, true, catById)};
     });
     return op;
+  }
+  const BAD_SCHEDULES = "В копии есть некорректные или повторяющиеся регулярные платежи.";
+  const FREQS = ["monthly", "weekly", "yearly", "days"];
+  const intIn = (v, a, b) => Number.isSafeInteger(v) && v >= a && v <= b;
+  function normSchedule(s, accountIds, catById) {
+    const bad = () => { throw new Error(BAD_SCHEDULES); };
+    if (!plain(s) || typeof s.id !== "string" || !ID.test(s.id) || !["expense", "income", "transfer"].includes(s.type) ||
+      typeof s.name !== "string" || !s.name.trim() || s.name.length > 80 || !cents(s.amountCents) || s.amountCents <= 0 ||
+      typeof s.accountId !== "string" || !accountIds.has(s.accountId) || !plain(s.rule) || !validDate(s.startDate) ||
+      !(s.endDate === null || (validDate(s.endDate) && s.endDate >= s.startDate)) || typeof s.subscription !== "boolean" ||
+      typeof s.paused !== "boolean" || typeof s.archived !== "boolean" || !Array.isArray(s.skips) || s.skips.length > 1000 || !isoOk(s.updatedAt)) bad();
+    const r = s.rule;
+    if (!FREQS.includes(r.freq) || !intIn(r.interval, 1, 365)) bad();
+    const rule = {freq: r.freq, interval: r.interval};
+    if (r.freq === "monthly") { if (!intIn(r.day, 1, 31)) bad(); rule.day = r.day; }
+    else if (r.freq === "weekly") { if (!intIn(r.weekday, 1, 7)) bad(); rule.weekday = r.weekday; }
+    else if (r.freq === "yearly") { if (!intIn(r.month, 1, 12) || !intIn(r.day, 1, 31)) bad(); rule.month = r.month; rule.day = r.day; }
+    if (s.skips.some(d => !validDate(d))) bad();
+    const out = {id: s.id, type: s.type, name: s.name, amountCents: s.amountCents, accountId: s.accountId};
+    if (s.type === "transfer") {
+      if (typeof s.toAccountId !== "string" || !accountIds.has(s.toAccountId) || s.toAccountId === s.accountId || s.categoryId != null || s.merchant !== undefined) bad();
+      out.toAccountId = s.toAccountId;
+    } else if (s.toAccountId !== undefined) bad();
+    out.categoryId = null;
+    if (s.categoryId != null) {
+      const c = typeof s.categoryId === "string" ? catById.get(s.categoryId) : null;
+      if (!c || c.kind !== s.type) bad();
+      out.categoryId = s.categoryId;
+    }
+    if (s.merchant !== undefined) {
+      if (typeof s.merchant !== "string" || s.merchant.trim().length > 80) bad();
+      if (s.merchant.trim()) out.merchant = s.merchant.trim();
+    }
+    return {...out, rule, startDate: s.startDate, endDate: s.endDate, subscription: s.subscription, paused: s.paused, archived: s.archived,
+      skips: [...new Set(s.skips)].sort(), updatedAt: s.updatedAt};
   }
   function validate(data) {
     if (!plain(data) || data.version !== 2 || !Array.isArray(data.accounts) || data.accounts.length < 1 || data.accounts.length > 1000 ||
@@ -185,8 +227,16 @@
     for (const a of accounts) if (a.kind !== "loan" && a.kind !== "person") total += sums.get(a.id);
     if (!Number.isSafeInteger(total)) throw new Error(LIMIT);
     const rest = {categories: cats};
-    for (const k of ["schedules", "reserves", "budgets", "loans"]) rest[k] = data[k].slice();
-    return {version: 2, accounts, categories: rest.categories, operations, schedules: rest.schedules, reserves: rest.reserves, budgets: rest.budgets, loans: rest.loans};
+    for (const k of ["reserves", "budgets", "loans"]) rest[k] = data[k].slice();
+    if (data.schedules.length > 1000) throw new Error(BAD_SCHEDULES);
+    const schedIds = new Set();
+    const schedules = data.schedules.map(x => {
+      const sc = normSchedule(x, accountIds, catById);
+      if (schedIds.has(sc.id)) throw new Error(BAD_SCHEDULES);
+      schedIds.add(sc.id);
+      return sc;
+    });
+    return {version: 2, accounts, categories: rest.categories, operations, schedules, reserves: rest.reserves, budgets: rest.budgets, loans: rest.loans};
   }
   function validateV1(data) {
     if (!data || data.version !== 1 || !Number.isSafeInteger(data.openingCents) || Math.abs(data.openingCents) > MAX_AMOUNT || !Array.isArray(data.entries) || data.entries.length > 100000) throw new Error(FORMAT);
