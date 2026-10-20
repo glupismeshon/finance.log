@@ -682,3 +682,20 @@ button.an-row:hover .an-name, button.an-row:focus-visible .an-name { color: var(
 .theme-row[role="checkbox"] .theme-check { visibility: visible; font-size: 0; }
 .theme-row[role="checkbox"] .theme-check::before { content: "[ ]"; font-size: 13px; color: var(--muted); }
 .theme-row[role="checkbox"][aria-checked="true"] .theme-check::before { content: "[✓]"; color: var(--accent); }
+
+/* ---------- Синхронизация ---------- */
+.sync-ind { white-space: nowrap; }
+.sync-ind .sync-short { display: none; }
+.sync-ind[data-state="ok"] { color: var(--accent); }
+.sync-ind[data-state="err"] { color: var(--warn); }
+.sync-ind[data-state="busy"], .sync-ind[data-state="offline"], .sync-ind[data-state="off"] { color: var(--muted); }
+.sync-ind:hover, .sync-ind:focus-visible { color: var(--text); }
+.auth-avatar-letter { display: inline-flex; align-items: center; justify-content: center; background: var(--panel); color: var(--accent); font-size: 13px; font-weight: 700; flex: none; }
+.sync-dlg-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+.sync-dlg-actions .btn { margin-top: 0; min-height: 44px; text-align: center; }
+.sync-dlg-actions .btn:not(.primary) { border: 1px solid var(--border); color: var(--text); }
+@media (max-width: 599px) {
+  .sync-ind { min-width: 44px; justify-content: center; display: inline-flex; align-items: center; }
+  .sync-ind .sync-full { display: none; }
+  .sync-ind .sync-short { display: inline; font-size: 16px; }
+}

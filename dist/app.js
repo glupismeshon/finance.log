@@ -59,7 +59,12 @@
     const checked = schema.validate(next);
     try { localStorage.setItem(KEY, JSON.stringify(checked)); }
     catch { throw new Error(t("err.saveFail")); }
+    const prev = state;
     state = checked;
+    if (sync.userId) {
+      const changed = SY.diff(prev, checked);
+      if (changed.length) { notePending(changed); saveSync(); scheduleSync(); renderIndicator(); }
+    }
     render();
   }
   function toast(text, id = null) {
@@ -1096,9 +1101,238 @@
     }
   }
 
-  // ---------- аккаунт ----------
+  // ---------- аккаунт и синхронизация ----------
   const auth = {state: "loading", me: null, config: null, error: null};
   const AUTH_HEADERS = {"X-Requested-With": "finance.log"};
+  const SY = globalThis.MoneyCore.sync;
+  const SYNC_KEY = "money.log.sync", PARK_DAYS = 7;
+  const syncDefault = () => ({userId: null, cursor: 0, device: newId(), pending: {}, parked: {}, declined: null, lastSync: null, lastError: null});
+  let sync;
+  try {
+    const o = JSON.parse(localStorage.getItem(SYNC_KEY) || "null");
+    sync = {...syncDefault(), ...(o && typeof o === "object" ? o : {})};
+    if (!/^[\w-]{1,64}$/.test(sync.device)) sync.device = newId();
+    if (!sync.pending || typeof sync.pending !== "object") sync.pending = {};
+    if (!sync.parked || typeof sync.parked !== "object") sync.parked = {};
+  } catch { sync = syncDefault(); }
+  const saveSync = () => { try { localStorage.setItem(SYNC_KEY, JSON.stringify(sync)); } catch {} };
+  let syncing = false, syncAgain = false, syncHold = false, syncTimer = null, pendSeq = 0, deleteArmed = false;
+  const syncInfo = {records: null};
+  const nowISO = () => new Date().toISOString();
+
+  function notePending(records) {
+    for (const r of records) { pendSeq = Math.max(pendSeq + 1, Date.now()); sync.pending[SY.recordKey(r)] = pendSeq; }
+  }
+  function scheduleSync() { clearTimeout(syncTimer); syncTimer = setTimeout(runSync, 1500); }
+  // запись состояния, пришедшего с сервера: без попадания в pending
+  function applySilently(next) {
+    const checked = schema.validate(next);
+    try { localStorage.setItem(KEY, JSON.stringify(checked)); } catch { throw new Error(t("err.saveFail")); }
+    state = checked;
+    render();
+  }
+  const parkedList = () => Object.values(sync.parked);
+  const parkedOld = () => parkedList().filter(p => Date.now() - Date.parse(p.since) > PARK_DAYS * 864e5);
+  const syncReady = () => auth.state === "in" && !!sync.userId && sync.userId === auth.me.user.id && !syncHold && !locked;
+
+  function syncStatus() {
+    if (sync.userId) {
+      if (auth.state === "out") return "err";
+      if (auth.state === "loading") return "busy";
+      if (syncing || syncHold) return "busy";
+      if (sync.lastError || parkedOld().length) return "err";
+      if (!navigator.onLine || auth.state === "offline") return "offline";
+      return Object.keys(sync.pending).length ? "busy" : "ok";
+    }
+    if (auth.state === "in" && sync.declined === auth.me.user.id) return "off";
+    return null;
+  }
+  const SHORT = {ok: "✓", busy: "…", offline: "○", err: "!", off: "–"};
+  function renderIndicator() {
+    const el = $("sync-indicator"), st = syncStatus();
+    el.hidden = !st;
+    if (!st) return;
+    el.dataset.state = st;
+    el.querySelector(".sync-full").textContent = t("sync.ind." + st);
+    el.querySelector(".sync-short").textContent = SHORT[st];
+    el.setAttribute("aria-label", t("sync.aria." + st));
+    el.title = t("sync.aria." + st);
+  }
+  function renderNotes() {
+    const on = auth.state === "in";
+    $("nav-note").setAttribute("data-i18n-html", on ? "nav.noteSync" : "nav.note");
+    $("nav-note").innerHTML = t(on ? "nav.noteSync" : "nav.note");
+    $("more-note").setAttribute("data-i18n", on ? "more.localSync" : "more.local");
+    $("more-note").textContent = t(on ? "more.localSync" : "more.local");
+  }
+  const syncUi = () => renderAccount();
+
+  function errText(code) {
+    if (code === "unauthorized") return t("sync.err.unauthorized");
+    if (code === "network") return t("sync.err.network");
+    return t("sync.err.other", {code});
+  }
+  function failure(e) {
+    if (e && e.status === 401) return "unauthorized";
+    if (e && e.status) return e.code || "http_" + e.status;
+    return "network";
+  }
+  async function syncPost(changes, cursor) {
+    const r = await authFetch("/api/sync", {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({cursor, device: sync.device, changes})});
+    if (!r.ok || !r.body) throw {status: r.status, code: r.body && r.body.error};
+    return r.body;
+  }
+  const keyOf = r => r.kind + ":" + r.id;
+  async function refreshStats() {
+    try {
+      const r = await authFetch("/api/sync/stats");
+      if (r.ok && r.body) { syncInfo.records = r.body.records; renderAccount(); }
+    } catch {}
+  }
+
+  async function runSync() {
+    clearTimeout(syncTimer);
+    if (syncing) { syncAgain = true; return; }
+    if (!syncReady()) { renderIndicator(); return; }
+    if (!navigator.onLine) { renderIndicator(); return; }
+    syncing = true; syncAgain = false;
+    syncUi();
+    try {
+      for (let guard = 0; guard < 400; guard++) {
+        const recMap = new Map(SY.toRecords(state).map(r => [keyOf(r), r]));
+        const batch = [], sent = {};
+        for (const k of Object.keys(sync.pending)) {
+          const r = recMap.get(k);
+          if (!r) { delete sync.pending[k]; continue; }
+          if (batch.length < 500) { batch.push(r); sent[k] = sync.pending[k]; }
+        }
+        const b = await syncPost(batch, sync.cursor);
+        for (const a of b.accepted || []) { const k = keyOf(a); if (k in sent && sync.pending[k] === sent[k]) delete sync.pending[k]; }
+        for (const s of b.stale || []) { const k = keyOf(s); if (k in sent && sync.pending[k] === sent[k]) delete sync.pending[k]; }
+        // входящие + ранее отложенные; без записей, которые уже совпадают с локальными
+        const local = new Map(SY.toRecords(state).map(r => [keyOf(r), r]));
+        const incoming = new Map();
+        for (const p of parkedList()) incoming.set(keyOf(p.rec), p.rec);
+        for (const r of b.changes || []) {
+          const l = local.get(keyOf(r));
+          if (l && l.deleted === !!r.deleted && JSON.stringify(l.data) === JSON.stringify(r.data)) { incoming.delete(keyOf(r)); continue; }
+          incoming.set(keyOf(r), r);
+        }
+        if (incoming.size) {
+          const res = SY.applyRemote(state, [...incoming.values()]);
+          if (res.state !== state) applySilently(res.state);
+          const parked = {};
+          for (const s of res.skipped) { const k = keyOf(s); parked[k] = {rec: incoming.get(k), since: (sync.parked[k] && sync.parked[k].since) || nowISO()}; }
+          sync.parked = parked;
+        }
+        sync.cursor = b.cursor; sync.lastSync = nowISO(); sync.lastError = null; saveSync();
+        if (!b.more && !Object.keys(sync.pending).some(k => recMap.has(k))) break;
+      }
+    } catch (e) {
+      sync.lastError = navigator.onLine === false ? null : failure(e);
+      saveSync();
+      if (sync.lastError === "unauthorized") loadAccount();
+    } finally {
+      syncing = false;
+      syncUi();
+      if (!sync.lastError) refreshStats();
+      if (syncAgain) setTimeout(runSync, 0);
+    }
+  }
+  const syncNow = () => { sync.lastError = null; saveSync(); runSync(); };
+
+  // ---- первое подключение устройства ----
+  const isLocalEmpty = () => state.operations.length === 0 && state.accounts.length <= 1 && state.accounts.every(a => a.openingCents === 0) && state.categories.every(c => c.key);
+  async function downloadAll() {
+    const map = new Map();
+    let cursor = 0;
+    for (let i = 0; i < 400; i++) {
+      const b = await syncPost([], cursor);
+      for (const r of b.changes || []) map.set(keyOf(r), r);
+      cursor = b.cursor;
+      if (!b.more) break;
+    }
+    return {records: [...map.values()], cursor};
+  }
+  function askSync(count, other) {
+    return new Promise(resolve => {
+      const dlg = $("sync-dialog"), merge = $("sync-merge"), replace = $("sync-replace"), cancel = $("sync-cancel");
+      let done = false, armed = false;
+      $("sync-dlg-text").textContent = t(other ? "sync.dlg.textOther" : "sync.dlg.textBoth", {records: tp("sync.records", count)});
+      $("sync-dlg-note").textContent = t("sync.dlg.note");
+      $("sync-dlg-error").textContent = "";
+      replace.textContent = t("sync.dlg.replace");
+      const fin = v => { if (done) return; done = true; if (dlg.open) dlg.close(); resolve(v); };
+      merge.onclick = () => fin("merge");
+      replace.onclick = () => { if (!armed) { armed = true; replace.textContent = t("sync.dlg.replaceConfirm"); return; } fin("replace"); };
+      cancel.onclick = () => fin("cancel");
+      dlg.oncancel = e => { e.preventDefault(); fin("cancel"); };
+      dlg.showModal();
+    });
+  }
+  let onboarding = false;
+  async function startOnboarding() {
+    if (onboarding || auth.state !== "in") return;
+    onboarding = true; syncHold = true; syncUi();
+    try {
+      const me = auth.me.user.id, other = !!sync.userId && sync.userId !== me;
+      const remote = await downloadAll();
+      let choice = "merge";
+      if (!isLocalEmpty() && remote.records.length) choice = await askSync(remote.records.length, other);
+      if (!isLocalEmpty() && !remote.records.length && other) choice = await askSync(0, true);
+      if (choice === "cancel") {
+        sync = {...syncDefault(), device: sync.device, declined: me};
+        saveSync();
+        return;
+      }
+      let parked = {};
+      if (remote.records.length) {
+        const res = SY.mergeFirst(choice === "replace" ? schema.empty(today()) : state, remote.records);
+        applySilently(res.state);
+        const byKey = new Map(remote.records.map(r => [keyOf(r), r]));
+        for (const s of res.skipped) parked[keyOf(s)] = {rec: byKey.get(keyOf(s)), since: nowISO()};
+      }
+      const remoteMap = new Map(remote.records.map(r => [keyOf(r), r]));
+      const pending = {};
+      for (const r of SY.toRecords(state)) {
+        const x = remoteMap.get(keyOf(r));
+        if (!x || x.updatedAt !== r.updatedAt || x.deleted !== r.deleted || JSON.stringify(x.data) !== JSON.stringify(r.data)) { pendSeq = Math.max(pendSeq + 1, Date.now()); pending[keyOf(r)] = pendSeq; }
+      }
+      sync = {...syncDefault(), device: sync.device, userId: me, cursor: remote.cursor, pending, parked, lastError: null};
+      saveSync();
+      if (remote.records.length) toast(t("sync.on"));
+    } catch (e) {
+      sync.lastError = failure(e); saveSync();
+    } finally {
+      onboarding = false; syncHold = false; syncUi();
+      runSync();
+    }
+  }
+  function syncReset() {
+    clearTimeout(syncTimer);
+    sync = {...syncDefault(), device: sync.device};
+    syncInfo.records = null;
+    saveSync();
+  }
+  async function deleteCloud() {
+    if (!deleteArmed) { deleteArmed = true; syncUi(); setTimeout(() => { deleteArmed = false; syncUi(); }, 5000); return; }
+    deleteArmed = false;
+    try {
+      const r = await authFetch("/api/me/data", {method: "DELETE"});
+      if (!r.ok) throw {status: r.status, code: r.body && r.body.error};
+      const me = auth.me.user.id;
+      sync = {...syncDefault(), device: sync.device, declined: me};
+      syncInfo.records = null;
+      saveSync();
+      toast(t("sync.deleted"));
+    } catch (e) { sync.lastError = failure(e); saveSync(); }
+    syncUi();
+  }
+  function onSignedIn() {
+    if (sync.userId === auth.me.user.id) { runSync(); refreshStats(); }
+    else if (sync.declined !== auth.me.user.id) startOnboarding();
+  }
+
   async function authFetch(path, opts = {}) {
     const r = await fetch(path, {credentials: "same-origin", ...opts, headers: {...AUTH_HEADERS, ...(opts.headers || {})}});
     let body = null;
@@ -1114,6 +1348,7 @@
       auth.state = auth.me ? "in" : "out";
     } catch { auth.state = "offline"; auth.me = null; }
     renderAccount();
+    if (auth.state === "in") onSignedIn();
   }
   function authLink(textKey, href) {
     const a = node("a", "bracket", t(textKey)); a.href = href; return a;
@@ -1125,8 +1360,44 @@
     try { await authFetch(path, {method}); } catch {}
     return loadAccount();
   }
+  function avatarEl(name, url) {
+    const letter = node("span", "auth-avatar auth-avatar-letter", ([...String(name || "")][0] || "?").toUpperCase());
+    letter.setAttribute("aria-hidden", "true");
+    if (!url) return letter;
+    const img = node("img", "auth-avatar"); img.src = url; img.alt = t("auth.avatarAlt");
+    img.referrerPolicy = "no-referrer";
+    img.addEventListener("error", () => img.replaceWith(letter));
+    return img;
+  }
+  function ago(iso) {
+    const s = Math.round((Date.now() - Date.parse(iso)) / 1000);
+    if (!(s >= 45)) return t("sync.justNow");
+    const rtf = new Intl.RelativeTimeFormat(I.locale(), {numeric: "auto", style: "short"});
+    if (s < 3600) return rtf.format(-Math.round(s / 60), "minute");
+    if (s < 86400) return rtf.format(-Math.round(s / 3600), "hour");
+    return rtf.format(-Math.round(s / 86400), "day");
+  }
+  function syncBox(rows, me) {
+    if (sync.userId === me.user.id) {
+      const rec = syncInfo.records === null ? "…" : tp("sync.records", syncInfo.records);
+      rows.push(node("p", "muted auth-line", sync.lastSync ? t("sync.cloud", {records: rec, when: ago(sync.lastSync)}) : t("sync.cloudNever", {records: rec})));
+      if (sync.lastError) rows.push(node("p", "auth-line warn", t("sync.error", {msg: errText(sync.lastError)})));
+      const old = parkedOld();
+      if (old.length) rows.push(node("p", "auth-line warn", t("sync.parkedOld", {records: tp("sync.records", old.length)})));
+      const actions = node("div", "auth-actions");
+      actions.append(authButton("sync.now", syncNow), authButton(deleteArmed ? "sync.deleteConfirm" : "sync.deleteCloud", deleteCloud));
+      rows.push(actions);
+    } else if (sync.declined === me.user.id) {
+      rows.push(node("p", "muted auth-line", t("sync.declined")));
+      const actions = node("div", "auth-actions");
+      actions.append(authButton("sync.enable", () => { sync.declined = null; saveSync(); startOnboarding(); }));
+      rows.push(actions);
+    }
+  }
   function renderAccount() {
-    const box = $("account-box");
+    renderIndicator();
+    renderNotes();
+    const box = $("auth-box");
     if (!box) return;
     const rows = [];
     if (auth.error) rows.push(node("p", "auth-line warn", ["identity_in_use", "access_denied", "last_identity"].includes(auth.error) ? t("auth.err." + auth.error) : t("auth.err.other", {code: auth.error})));
@@ -1142,23 +1413,37 @@
       const me = auth.me, byProvider = {};
       for (const i of me.identities) byProvider[i.provider] = i;
       const head = node("div", "auth-user");
-      if (me.user.avatar) {
-        const img = node("img", "auth-avatar"); img.src = me.user.avatar; img.alt = t("auth.avatarAlt");
-        img.referrerPolicy = "no-referrer"; head.append(img);
-      }
-      head.append(node("span", "", me.user.name || (byProvider.google && byProvider.google.email) || (byProvider.telegram && byProvider.telegram.email) || "—"));
+      const display = me.user.name || (byProvider.google && byProvider.google.email) || (byProvider.telegram && byProvider.telegram.email) || "—";
+      head.append(avatarEl(display, me.user.avatar), node("span", "", display));
       rows.push(head);
       const g = byProvider.google, tg = byProvider.telegram, none = t("auth.none");
       rows.push(node("p", "muted auth-line", t("auth.providers", {google: g ? (g.email || g.name || "✓") : none, telegram: tg ? (tg.email || tg.name || "✓") : none})));
+      syncBox(rows, me);
       const actions = node("div", "auth-actions");
       if (!g && auth.config.google) actions.append(authLink("auth.linkGoogle", "/api/auth/google/start?link=1"));
       if (!tg && auth.config.telegram) actions.append(authLink("auth.linkTelegram", "/api/auth/telegram/start?link=1"));
-      actions.append(authButton("auth.logout", () => authPost("/api/auth/logout")));
-      actions.append(authButton("auth.logoutAll", () => authPost("/api/auth/logout-all")));
+      actions.append(authButton("auth.logout", () => { syncReset(); authPost("/api/auth/logout"); }));
+      actions.append(authButton("auth.logoutAll", () => { syncReset(); authPost("/api/auth/logout-all"); }));
       rows.push(actions);
     }
     box.replaceChildren(...rows);
   }
+  $("sync-indicator").addEventListener("click", () => {
+    const st = syncStatus();
+    if (st === "err" && auth.state === "in") syncNow();
+    else if (st === "err" && auth.state !== "in") loadAccount().then(() => { if (auth.state === "out") setTab("settings"); });
+    else setTab("settings");
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) return;
+    if (sync.userId && auth.state !== "in") loadAccount(); else runSync();
+  });
+  window.addEventListener("online", () => { if (sync.userId && auth.state !== "in") loadAccount(); else runSync(); });
+  window.addEventListener("offline", syncUi);
+  setInterval(() => {
+    if (document.hidden || !sync.userId) return;
+    if (auth.state !== "in") loadAccount(); else { runSync(); renderAccount(); }
+  }, 60000);
   function handleAuthReturn() {
     const q = new URLSearchParams(location.search), code = q.get("auth_error");
     if (!code) return;
@@ -1445,6 +1730,10 @@
     if(activeSheet)return;
     if(["INPUT","TEXTAREA","SELECT"].includes(event.target.tagName)||event.target.isContentEditable)return;
     if(event.code==="KeyN"){event.preventDefault();startNew();}
+  });
+  window.addEventListener("storage",event=>{
+    if(event.key!==SYNC_KEY||syncing||event.newValue===null)return;
+    try { sync={...syncDefault(),...JSON.parse(event.newValue)}; renderAccount(); } catch {}
   });
   window.addEventListener("storage",event=>{
     if(event.key!==boot.KEY)return;

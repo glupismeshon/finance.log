@@ -27,6 +27,7 @@
   <script src="core/suggest.js" defer></script>
   <script src="core/views.js" defer></script>
   <script src="core/analytics.js" defer></script>
+  <script src="core/sync.js" defer></script>
   <script src="datepicker.js" defer></script>
   <script src="app.js" defer></script>
 </head>
@@ -39,6 +40,7 @@
     <span class="crumb muted"><span aria-hidden="true">~/</span><span id="page-label"></span></span>
     <div class="topbar-right">
       <time id="today-label" class="muted"></time>
+      <button id="sync-indicator" class="bracket sync-ind" type="button" data-state="ok" hidden><span class="sync-full" aria-hidden="true"></span><span class="sync-short" aria-hidden="true"></span></button>
       <button id="privacy-button" class="bracket icon-btn" type="button" aria-pressed="false" aria-label="">
         <svg class="pv-show" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>
         <svg class="pv-hide" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>
@@ -94,7 +96,7 @@
         </button>
         <input id="import-file" type="file" accept=".json,application/json" hidden>
       </div>
-      <p class="nav-note muted hint" data-i18n-html="nav.note"></p>
+      <p class="nav-note muted hint" id="nav-note" data-i18n-html="nav.note"></p>
     </aside>
 
     <main class="journal">
@@ -233,7 +235,7 @@
         <button class="bracket acc-back settings-back" id="settings-back" type="button" data-i18n="common.back"></button>
         <section class="box" aria-labelledby="settings-account-label">
           <h2 class="box-label" id="settings-account-label" data-i18n="auth.title"></h2>
-          <div class="box-body" id="account-box" aria-live="polite"></div>
+          <div class="box-body" id="auth-box" aria-live="polite"></div>
         </section>
         <section class="box" aria-labelledby="settings-lang-label">
           <h2 class="box-label" id="settings-lang-label" data-i18n="settings.lang"></h2>
@@ -291,7 +293,7 @@
           <div class="box-body more-list">
             <button class="bracket more-btn" id="more-export" type="button" data-i18n="more.export"></button>
             <button class="bracket more-btn" id="more-import" type="button" data-i18n="more.import"></button>
-            <p class="muted hint" data-i18n="more.local"></p>
+            <p class="muted hint" id="more-note" data-i18n="more.local"></p>
           </div>
         </section>
         <section class="box" aria-labelledby="trash-label">
@@ -464,6 +466,19 @@
       <p class="muted" data-i18n="import.note"></p>
       <div id="import-error" class="form-error" role="alert"></div>
       <button class="btn primary" id="confirm-import" type="button"><span data-i18n="import.confirm"></span><span aria-hidden="true">↑</span></button>
+    </div>
+  </dialog>
+  <dialog id="sync-dialog" aria-labelledby="sync-title">
+    <h2 class="box-label" id="sync-title" data-i18n="sync.dlg.title"></h2>
+    <div class="dialog-body">
+      <p id="sync-dlg-text"></p>
+      <p class="muted" id="sync-dlg-note"></p>
+      <div id="sync-dlg-error" class="form-error" role="alert"></div>
+      <div class="sync-dlg-actions">
+        <button class="btn primary" id="sync-merge" type="button" data-i18n="sync.dlg.merge"></button>
+        <button class="btn" id="sync-replace" type="button" data-i18n="sync.dlg.replace"></button>
+        <button class="btn" id="sync-cancel" type="button" data-i18n="sync.dlg.cancel"></button>
+      </div>
     </div>
   </dialog>
   <noscript><div class="error-banner">enable javascript to use finance.log.</div></noscript>
